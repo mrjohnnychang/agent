@@ -8,9 +8,6 @@ use std::path::PathBuf;
 
 /// Contains the error type(s) for this crate
 pub mod error;
-/// Contains all the macros for this crate
-#[macro_use]
-pub mod macros;
 /// Traits and types for defining exclusion and inclusion rules
 pub mod rule;
 /// Defines the tailer used to tail directories or single files
