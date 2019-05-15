@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "logdna-agent",
+    "logdna-agent-fs",
+]

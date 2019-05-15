@@ -1,0 +1,21 @@
+[package]
+name = "logdna-agent-fs"
+version = "0.1.0"
+authors = ["CJP10 <cjpet10@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+#io
+inotify = "0.7"
+#error
+quick-error = "1"
+#utils
+regex = "1"
+glob = "0.3"
+lazy_static = "1"
+crossbeam = "0.7"
+#logging
+log = "0.4"
+
+[dev-dependencies]
+pretty_env_logger = "0.3"
