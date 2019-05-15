@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
-use inotify::{Event as InotifyEvent, EventMask, Inotify, WatchDescriptor};
+use inotify::{Event as InotifyEvent, EventMask, Inotify, WatchDescriptor, WatchMask};
+use walkdir::WalkDir;
 
+use crate::error::WatchError;
 use crate::Event;
-use crate::macros;
-use crate::rule::{Rule, Rules};
+use crate::rule::{Rule, Rules, Status};
 
 //todo provide examples and some extra tid bits around operational behavior
 /// Used to watch the filesystem for [Events](../enum.Event.html)
@@ -65,12 +66,77 @@ impl Watcher {
         }
     }
 
+    pub fn watch<P: Into<PathBuf>>(&mut self, path: P) {
+        let path = path.into();
+
+        if let Err(e) = self.add(path.clone()) {
+            error!("error adding root {:?}: {:?}", path, e)
+        }
+
+        if path.is_dir() {
+            for entry in WalkDir::new(path).follow_links(true) {
+                match entry {
+                    Ok(path) => {
+                        if let Err(e) = self.add(path.path().to_path_buf()) {
+                            error!("error adding {:?}: {:?}", path.path(), e)
+                        }
+                    }
+                    Err(e) => {
+                        error!("error accessing filesystem {:?}", e)
+                    }
+                }
+            }
+        }
+    }
+
+    fn add(&mut self, path: PathBuf) -> Result<(), WatchError> {
+        let path_str = path.to_str().ok_or(WatchError::PathNonUtf8(path.clone()))?;
+
+        if path.is_file() {
+            match self.rules.passes(path_str) {
+                Status::NotIncluded => {
+                    info!("{} was not included!", path_str);
+                    return Ok(());
+                }
+                Status::Excluded => {
+                    info!("{} was excluded!", path_str);
+                    return Ok(());
+                }
+                Status::Ok => {}
+            };
+        }
+
+        let watch_descriptor = self.inotify.add_watch(path.clone(), watch_mask(&path))?;
+        info!("added {:?} to watcher", path);
+        self.watch_descriptors.insert(watch_descriptor, path);
+        Ok(())
+    }
+
     fn process(&mut self, event: InotifyEvent<&OsStr>, sender: &Sender<Event>) {
         if event.mask.contains(EventMask::CREATE) {}
 
-        if event.mask.contains(EventMask::MODIFY) {}
+        if event.mask.contains(EventMask::MODIFY) {
+            self.watch_descriptors.get(&event.wd)
+                .and_then(|path|
+                    sender.send(Event::Write(path.clone())).ok()
+                );
+        }
 
-        if event.mask.contains(EventMask::DELETE_SELF) {}
+        if event.mask.contains(EventMask::DELETE_SELF) {
+            self.watch_descriptors.remove(&event.wd)
+                .and_then(|path|
+                    Some(info!("removed {:?} from watcher", path))
+                );
+        }
+    }
+}
+
+// returns the watch mask depending on if a path is a file or dir
+fn watch_mask(path: &PathBuf) -> WatchMask {
+    if path.is_file() {
+        WatchMask::MODIFY | WatchMask::DELETE_SELF
+    } else {
+        WatchMask::CREATE | WatchMask::DELETE_SELF
     }
 }
 
@@ -79,7 +145,6 @@ pub struct WatchBuilder {
     initial_dirs: Vec<PathBuf>,
     loop_interval: Duration,
     rules: Rules,
-
 }
 
 impl WatchBuilder {
