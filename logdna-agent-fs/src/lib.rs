@@ -45,7 +45,8 @@ mod tests {
 
     use crossbeam::channel;
 
-    use crate::rule::GlobRule;
+    use crate::rule::{GlobRule, RegexRule};
+    use crate::tail::Tailer;
     use crate::watch::Watcher;
 
     #[test]
@@ -54,14 +55,15 @@ mod tests {
         let watcher = Watcher::builder()
             .add("/var/log/")
             .include(GlobRule::new("*.log").unwrap())
+            .include(RegexRule::new(r#"/.+/[^.]*$"#).unwrap())
             .build().unwrap();
+        let tailer = Tailer::new();
+        let tailer_sender = tailer.sender();
         let (s, r) = channel::unbounded();
-        spawn(move || {
-            loop {
-                println!("{}", r.recv().unwrap())
-            }
+        spawn(move || tailer.run(s));
+        spawn(move || loop {
+            println!("{}", r.recv().unwrap().line)
         });
-        watcher.run(s);
+        watcher.run(tailer_sender);
     }
-
 }

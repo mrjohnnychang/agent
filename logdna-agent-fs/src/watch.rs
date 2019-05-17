@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs::{read_dir, read_link};
 use std::io;
 use std::mem::replace;
@@ -141,7 +141,20 @@ impl Watcher {
     }
     // handles inotify events and may produce Event(s) that are return upstream through sender
     fn process(&mut self, event: InotifyEvent<&OsStr>, sender: &Sender<Event>) {
-        if event.mask.contains(EventMask::CREATE) {}
+        if event.mask.contains(EventMask::CREATE) {
+            let path = match self.watch_descriptors.get(&event.wd)
+                .map(|p| p.join(event.name.unwrap_or(&OsString::new()))) {
+                Some(v) => v,
+                None => {return;}
+            };
+
+            match self.watch(&path) {
+                Ok(paths) => paths.into_iter()
+                    .filter(|p| p.is_file())
+                    .for_each(|p| sender.send(Event::New(p)).unwrap()),
+                Err(e) => error!("error adding root path {:?}: {:?}", path, e),
+            }
+        }
 
         if event.mask.contains(EventMask::MODIFY) {
             self.watch_descriptors.get(&event.wd)
