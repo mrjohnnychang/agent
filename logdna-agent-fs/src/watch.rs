@@ -1,12 +1,14 @@
 use std::collections::HashMap;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
+use std::fs::{read_dir, read_link};
 use std::io;
-use std::path::{Path, PathBuf};
-use std::sync::mpsc::Sender;
+use std::mem::replace;
+use std::path::PathBuf;
+use std::thread::sleep;
 use std::time::Duration;
 
+use crossbeam::Sender;
 use inotify::{Event as InotifyEvent, EventMask, Inotify, WatchDescriptor, WatchMask};
-use walkdir::WalkDir;
 
 use crate::error::WatchError;
 use crate::Event;
@@ -50,7 +52,24 @@ impl Watcher {
     /// The sender is the where events are streamed too, this should be an unbounded sender
     /// to prevent kernel over flow. However, being unbounded isn't a hard requirement.
     pub fn run(mut self, sender: Sender<Event>) {
+        // iterate over all initial dirs and add them to the watcher
+        // replace is need because it takes owner ship of the initial_dirs field without consuming self
+        for dir in replace(&mut self.initial_dirs, Vec::new()) {
+            // if the watch was successful a list of watched paths will be returned
+            // we only create Initiate events for files
+            // the events get sent upstream through sender
+            match self.watch(&dir) {
+                Ok(paths) => paths.into_iter()
+                    .filter(|p| p.is_file())
+                    .for_each(|p| sender.send(Event::Initiate(p)).unwrap()),
+                Err(e) => error!("error initializing root path {:?}: {:?}", dir, e),
+            }
+        }
+
+        // stack allocated buffer for reading inotify events
         let mut buf = [0u8; 4096];
+        // infinite loop that constantly reads the inotify file descriptor when it has data
+        // if the sender passed in to run() is bounded this loop can be blocked if that sender hits capacity
         loop {
             let events = match self.inotify.read_events_blocking(&mut buf) {
                 Ok(events) => events,
@@ -63,57 +82,79 @@ impl Watcher {
             for event in events {
                 self.process(event, &sender);
             }
+
+            sleep(self.loop_interval)
         }
     }
-
-    pub fn watch<P: Into<PathBuf>>(&mut self, path: P) {
+    /// Used to watch a file or directory, in the case it's a directory it is recursively scanned
+    ///
+    /// This scan has an unlimited depth, so watching /var/log/ will capture all the root and all children
+    pub fn watch<P: Into<PathBuf>>(&mut self, path: P) -> Result<Vec<PathBuf>, WatchError> {
+        let mut paths = Vec::new();
         let path = path.into();
-
-        if let Err(e) = self.add(path.clone()) {
-            error!("error adding root {:?}: {:?}", path, e)
-        }
+        let path_str = path.to_str().ok_or(WatchError::PathNonUtf8(path.clone()))?;
 
         if path.is_dir() {
-            for entry in WalkDir::new(path).follow_links(true) {
-                match entry {
-                    Ok(path) => {
-                        if let Err(e) = self.add(path.path().to_path_buf()) {
-                            error!("error adding {:?}: {:?}", path.path(), e)
+            recursive_scan(&path)
+                .into_iter()
+                .filter_map(|p| p.to_str().map(|s| (p.clone(), s.to_string()))) // turn path -> path, path_str
+                .for_each(|(p, s)| {
+                    // we only apply exclusion/inclusion rules to files
+                    if p.is_dir() || self.path_is_ok(&s) {
+                        // if the path is added to inotify successfully
+                        // we push it onto the paths vec to be return upstream
+                        match self.add(&p) {
+                            Ok(_) => paths.push(p),
+                            Err(e) => error!("error adding {:?} to watcher: {:?}", p, e)
                         }
                     }
-                    Err(e) => {
-                        error!("error accessing filesystem {:?}", e)
-                    }
-                }
+                })
+        } else {
+            if self.path_is_ok(path_str) {
+                self.add(&path)?;
+                paths.push(path);
+            }
+        }
+
+        Ok(paths)
+    }
+    // adds path to inotify and watch descriptor map
+    fn add(&mut self, path: &PathBuf) -> Result<(), WatchError> {
+        let watch_descriptor = self.inotify.add_watch(path.clone(), watch_mask(&path))?;
+        self.watch_descriptors.insert(watch_descriptor, path.clone());
+        info!("added {:?} to watcher", path);
+        Ok(())
+    }
+    // a helper for checking if a path passes exclusion/inclusion rules
+    fn path_is_ok(&self, path: &str) -> bool {
+        match self.rules.passes(path) {
+            Status::Ok => true,
+            Status::NotIncluded => {
+                info!("{} was not included!", path);
+                false
+            }
+            Status::Excluded => {
+                info!("{} was excluded!", path);
+                false
             }
         }
     }
-
-    fn add(&mut self, path: PathBuf) -> Result<(), WatchError> {
-        let path_str = path.to_str().ok_or(WatchError::PathNonUtf8(path.clone()))?;
-
-        if path.is_file() {
-            match self.rules.passes(path_str) {
-                Status::NotIncluded => {
-                    info!("{} was not included!", path_str);
-                    return Ok(());
-                }
-                Status::Excluded => {
-                    info!("{} was excluded!", path_str);
-                    return Ok(());
-                }
-                Status::Ok => {}
-            };
-        }
-
-        let watch_descriptor = self.inotify.add_watch(path.clone(), watch_mask(&path))?;
-        info!("added {:?} to watcher", path);
-        self.watch_descriptors.insert(watch_descriptor, path);
-        Ok(())
-    }
-
+    // handles inotify events and may produce Event(s) that are return upstream through sender
     fn process(&mut self, event: InotifyEvent<&OsStr>, sender: &Sender<Event>) {
-        if event.mask.contains(EventMask::CREATE) {}
+        if event.mask.contains(EventMask::CREATE) {
+            let path = match self.watch_descriptors.get(&event.wd)
+                .map(|p| p.join(event.name.unwrap_or(&OsString::new()))) {
+                Some(v) => v,
+                None => {return;}
+            };
+
+            match self.watch(&path) {
+                Ok(paths) => paths.into_iter()
+                    .filter(|p| p.is_file())
+                    .for_each(|p| sender.send(Event::New(p)).unwrap()),
+                Err(e) => error!("error adding root path {:?}: {:?}", path, e),
+            }
+        }
 
         if event.mask.contains(EventMask::MODIFY) {
             self.watch_descriptors.get(&event.wd)
@@ -138,6 +179,45 @@ fn watch_mask(path: &PathBuf) -> WatchMask {
     } else {
         WatchMask::CREATE | WatchMask::DELETE_SELF
     }
+}
+
+// recursively scans a directory for unlimited depth
+fn recursive_scan(path: &PathBuf) -> Vec<PathBuf> {
+    let path = follow_link(path.clone());
+    let mut paths = vec![path.clone()];
+
+// read all files/dirs in path at depth 1
+    let tmp_paths = match read_dir(&path) {
+        Ok(v) => v,
+        Err(e) => {
+            error!("failed accessing {:?}: {:?}", path, e);
+            return paths;
+        }
+    };
+// iterate over all the paths and call recursive_scan on all dirs
+    for tmp_path in tmp_paths {
+        let path = match tmp_path {
+            Ok(v) => follow_link(v.path()),
+            Err(e) => {
+                error!("failed reading {:?}: {:?}", path, e);
+                continue;
+            }
+        };
+        // if the path is a dir then recursively scan it also
+        // so that we have an unlimited depth scan
+        if path.is_dir() {
+            paths.append(&mut recursive_scan(&path))
+        } else {
+            paths.push(path)
+        }
+    }
+
+    paths
+}
+
+// follow a symlink to its "real" path
+fn follow_link(path: PathBuf) -> PathBuf {
+    read_link(&path).unwrap_or(path)
 }
 
 /// Creates an instance of a Watcher

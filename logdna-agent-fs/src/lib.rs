@@ -19,9 +19,7 @@ pub mod watch;
 #[derive(Debug)]
 pub enum Event {
     /// Sent on startup for each file currently being watched
-    ///
-    /// The u64 is the file's length at startup
-    Initiate(PathBuf, u64),
+    Initiate(PathBuf),
     /// A new file was created
     New(PathBuf),
     /// A file was deleted
@@ -33,7 +31,7 @@ pub enum Event {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
-            Event::Initiate(path, len) => write!(f, "INITIATE {:?} {}", path, len),
+            Event::Initiate(path) => write!(f, "INITIATE {:?}", path),
             Event::New(path) => write!(f, "NEW {:?}", path),
             Event::Delete(path) => write!(f, "DELETE {:?}", path),
             Event::Write(path) => write!(f, "WRITE {:?}", path),
@@ -43,6 +41,29 @@ impl Display for Event {
 
 #[cfg(test)]
 mod tests {
+    use std::thread::spawn;
+
+    use crossbeam::channel;
+
+    use crate::rule::{GlobRule, RegexRule};
+    use crate::tail::Tailer;
+    use crate::watch::Watcher;
+
     #[test]
-    fn stream() {}
+    fn watch_test() {
+        pretty_env_logger::init();
+        let watcher = Watcher::builder()
+            .add("/var/log/")
+            .include(GlobRule::new("*.log").unwrap())
+            .include(RegexRule::new(r#"/.+/[^.]*$"#).unwrap())
+            .build().unwrap();
+        let tailer = Tailer::new();
+        let tailer_sender = tailer.sender();
+        let (s, r) = channel::unbounded();
+        spawn(move || tailer.run(s));
+        spawn(move || loop {
+            println!("{}", r.recv().unwrap().line)
+        });
+        watcher.run(tailer_sender);
+    }
 }
