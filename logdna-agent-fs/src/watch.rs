@@ -78,11 +78,11 @@ impl Watcher {
                     continue;
                 }
             };
-
+            // process all events we just read
             for event in events {
                 self.process(event, &sender);
             }
-
+            //sleep for loop_interval duration
             sleep(self.loop_interval)
         }
     }
@@ -92,12 +92,14 @@ impl Watcher {
     pub fn watch<P: Into<PathBuf>>(&mut self, path: P) -> Result<Vec<PathBuf>, WatchError> {
         let mut paths = Vec::new();
         let path = path.into();
+        // paths needs to be valid utf8
         let path_str = path.to_str().ok_or(WatchError::PathNonUtf8(path.clone()))?;
-
+        // if the path is a dir we need to scan it recursively
         if path.is_dir() {
             recursive_scan(&path)
                 .into_iter()
-                .filter_map(|p| p.to_str().map(|s| (p.clone(), s.to_string()))) // turn path -> path, path_str
+                // for each event map path -> path, path_str
+                .filter_map(|p| p.to_str().map(|s| (p.clone(), s.to_string())))
                 .for_each(|(p, s)| {
                     // we only apply exclusion/inclusion rules to files
                     if p.is_dir() || self.path_is_ok(&s) {
@@ -110,6 +112,8 @@ impl Watcher {
                     }
                 })
         } else {
+            // in this case we are watching a file
+            // check that is passes our inclusion/exclusion rules and push it
             if self.path_is_ok(path_str) {
                 self.add(&path)?;
                 paths.push(path);
@@ -120,7 +124,9 @@ impl Watcher {
     }
     // adds path to inotify and watch descriptor map
     fn add(&mut self, path: &PathBuf) -> Result<(), WatchError> {
+        // add the path to the inotify with the appropriate mask
         let watch_descriptor = self.inotify.add_watch(path.clone(), watch_mask(&path))?;
+        // add the watch descriptor to the map so we can resolve the path later
         self.watch_descriptors.insert(watch_descriptor, path.clone());
         info!("added {:?} to watcher", path);
         Ok(())
