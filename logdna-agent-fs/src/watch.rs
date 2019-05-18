@@ -169,6 +169,10 @@ impl Watcher {
                     Some(info!("removed {:?} from watcher", path))
                 );
         }
+
+        if event.mask.contains(EventMask::Q_OVERFLOW) {
+            panic!("overflowed kernel queue!")
+        }
     }
 }
 
