@@ -20,6 +20,7 @@ pub struct Tailer {
 }
 
 impl Tailer {
+    /// Creates new instance of Tailer
     pub fn new() -> Self {
         let (s, r) = unbounded();
         Self {
@@ -28,11 +29,11 @@ impl Tailer {
             offsets: HashMap::new(),
         }
     }
-
+    /// Returns the sender the tailer is "listening" on
     pub fn sender(&self) -> Sender<Event> {
         self.event_sender.clone()
     }
-
+    /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
     pub fn run(mut self, sender: Sender<LineBuilder>) {
         loop {
             // safe to unwrap
@@ -62,8 +63,8 @@ impl Tailer {
             }
         }
     }
-
-    fn tail(&mut self, path: PathBuf, sender: &Sender<Line>) {
+    // tail a file for new line(s)
+    fn tail(&mut self, path: PathBuf, sender: &Sender<LineBuilder>) {
         // get the offset from the map, return if not found
         let offset = match self.offsets.get_mut(&path) {
             Some(v) => v,
@@ -133,7 +134,7 @@ impl Tailer {
             sender.send(
                 LineBuilder::new()
                     .line(line)
-                    .file(file_name)
+                    .file(file_name.clone())
             ).unwrap()
         }
     }
