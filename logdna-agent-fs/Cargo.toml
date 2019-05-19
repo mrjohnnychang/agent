@@ -5,6 +5,8 @@ authors = ["CJP10 <cjpet10@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+#agent
+agent-core = { package = "logdna-agent-core", path = "../logdna-agent-core" }
 #io
 inotify = "0.7"
 #error
