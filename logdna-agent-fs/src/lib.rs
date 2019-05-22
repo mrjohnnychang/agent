@@ -62,7 +62,7 @@ mod tests {
         let (s, r) = channel::unbounded();
         spawn(move || tailer.run(s));
         spawn(move || loop {
-            println!("{}", r.recv().unwrap().line)
+            println!("{}", r.recv().unwrap().build().unwrap().line)
         });
         watcher.run(tailer_sender);
     }
