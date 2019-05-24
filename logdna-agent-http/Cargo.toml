@@ -1,0 +1,13 @@
+[package]
+name = "logdna-agent-http"
+version = "0.1.0"
+authors = ["CJP10 <cjpet10@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+#agent
+agent-core = { package = "logdna-agent-core", path = "../logdna-agent-core" }
+#io
+tokio = "0.1"
+#utils
+crossbeam = "0.7"
