@@ -7,11 +7,16 @@ jobs:
     steps:
       - checkout
       - run:
+          name: Install components
+          command: |
+            rustup component add rustfmt
+            rustup component add clippy
+      - run:
           name: Check formatting
           command: |
             rustfmt --version
             cargo fmt -- --write-mode=diff
       - run:
-          name: Stable Build
+          name: Build
           command: |
-            cargo +stable build
+            cargo build
