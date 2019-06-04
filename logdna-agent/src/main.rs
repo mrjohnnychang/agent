@@ -9,7 +9,7 @@ use agent_fs::watch::Watcher;
 use agent_http::client::Client;
 
 fn main() {
-    pretty_env_logger::init();
+    env_logger::init();
 
     let watcher = Watcher::builder()
         .add("/var/log/")

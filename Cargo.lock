@@ -446,10 +446,10 @@ dependencies = [
 name = "logdna-agent"
 version = "0.1.0"
 dependencies = [
+ "env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "logdna-agent-core 0.1.0",
  "logdna-agent-fs 0.1.0",
  "logdna-agent-http 0.1.0",
- "pretty_env_logger 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
