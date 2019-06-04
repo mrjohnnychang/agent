@@ -1,7 +1,7 @@
 version: 2
 
 jobs:
-  build:
+  lint:
     docker:
       - image: circleci/rust:latest
     steps:
@@ -15,7 +15,45 @@ jobs:
           name: Lint
           command: |
             cargo clippy
+  build-tag:
+    environment:
+      IMAGE_NAME: logdna/logdna-agent-v2
+    docker:
+      - image: circleci/buildpack-deps:stretch
+    steps:
+      - checkout
+      - setup_remote_docker
       - run:
-          name: Build
+          name: Build Docker image
           command: |
-            cargo build
+            echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+            docker build -t $IMAGE_NAME:latest -t $IMAGE_NAME:$CIRCLE_TAG .
+  build-master:
+    environment:
+      IMAGE_NAME: logdna/logdna-agent-v2
+    docker:
+      - image: circleci/buildpack-deps:stretch
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Build Docker image
+          command: |
+            echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+            docker build -t $IMAGE_NAME:master .
+
+
+workflows:
+  version: 2
+  build-master:
+    jobs:
+      - build-master:
+          filters:
+            branches:
+              only: master
+  build-tags:
+    jobs:
+      - build-master:
+          filters:
+            tags:
+              only: /.*/
