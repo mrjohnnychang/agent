@@ -43,7 +43,7 @@ impl Watcher {
     pub fn builder() -> WatchBuilder {
         WatchBuilder {
             initial_dirs: Vec::new(),
-            loop_interval: Duration::from_millis(250),
+            loop_interval: Duration::from_millis(50),
             rules: Rules::new(),
         }
     }
@@ -171,9 +171,10 @@ impl Watcher {
 
         if event.mask.contains(EventMask::DELETE_SELF) {
             self.watch_descriptors.remove(&event.wd)
-                .and_then(|path|
-                    Some(info!("removed {:?} from watcher", path))
-                );
+                .and_then(|path| {
+                    Some(info!("removed {:?} from watcher", path));
+                    sender.send(Event::Delete(path)).ok()
+                });
         }
 
         if event.mask.contains(EventMask::Q_OVERFLOW) {

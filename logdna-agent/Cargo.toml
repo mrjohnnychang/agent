@@ -5,3 +5,7 @@ authors = ["Connor Peticca <cjpet10@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+agent-core = { package = "logdna-agent-core", path = "../logdna-agent-core" }
+agent-http = { package = "logdna-agent-http", path = "../logdna-agent-http" }
+agent-fs = { package = "logdna-agent-fs", path = "../logdna-agent-fs" }
+pretty_env_logger = "0.3"
