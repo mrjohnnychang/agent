@@ -39,7 +39,7 @@ jobs:
       - run:
           name: Build Docker image
           command: |
-            echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+            echo "${DOCKERHUB_PASS}" | docker login --username "${DOCKERHUB_USERNAME}" --password-stdin
             docker build -t $IMAGE_NAME:master .
 
 
