@@ -38,32 +38,3 @@ impl Display for Event {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use std::thread::spawn;
-
-    use crossbeam::channel;
-
-    use crate::rule::{GlobRule, RegexRule};
-    use crate::tail::Tailer;
-    use crate::watch::Watcher;
-
-    #[test]
-    fn watch_test() {
-        pretty_env_logger::init();
-        let watcher = Watcher::builder()
-            .add("/var/log/")
-            .include(GlobRule::new("*.log").unwrap())
-            .include(RegexRule::new(r#"/.+/[^.]*$"#).unwrap())
-            .build().unwrap();
-        let tailer = Tailer::new();
-        let tailer_sender = tailer.sender();
-        let (s, r) = channel::unbounded();
-        spawn(move || tailer.run(s));
-        spawn(move || loop {
-            println!("{}", r.recv().unwrap().build().unwrap().line)
-        });
-        watcher.run(tailer_sender);
-    }
-}

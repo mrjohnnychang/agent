@@ -1,5 +1,5 @@
-mod client;
-mod retry;
+pub mod client;
+pub mod retry;
 
 #[cfg(test)]
 mod tests {
