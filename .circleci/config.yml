@@ -1,20 +1,15 @@
-version: 2
+version: 2.1
 
 jobs:
-  lint:
+  check:
     docker:
-      - image: circleci/rust:latest
+      - image: rust:latest
     steps:
       - checkout
       - run:
-          name: Install
+          name: Check
           command: |
-            rustup component add rustfmt
-            rustup component add clippy
-      - run:
-          name: Lint
-          command: |
-            cargo clippy
+            cargo check
   build-tag:
     environment:
       IMAGE_NAME: logdna/logdna-agent-v2
@@ -26,8 +21,9 @@ jobs:
       - run:
           name: Build Docker image
           command: |
-            echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
-            docker build -t $IMAGE_NAME:latest -t $IMAGE_NAME:$CIRCLE_TAG .
+            echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+            docker build -t $IMAGE_NAME:stable -t $IMAGE_NAME:latest -t $IMAGE_NAME:$CIRCLE_TAG .
+            docker push $IMAGE_NAME:stable $IMAGE_NAME:latest -t $IMAGE_NAME:$CIRCLE_TAG
   build-master:
     environment:
       IMAGE_NAME: logdna/logdna-agent-v2
@@ -41,19 +37,24 @@ jobs:
           command: |
             echo "${DOCKER_PASS}" | docker login --username "${DOCKER_USER}" --password-stdin
             docker build -t $IMAGE_NAME:master .
-
+            docker push $IMAGE_NAME:master
 
 workflows:
   version: 2
+  check:
+    jobs:
+      - check
   build-master:
     jobs:
       - build-master:
           filters:
             branches:
               only: master
-  build-tags:
+  build-tag:
     jobs:
-      - build-master:
+      - build-tag:
           filters:
             tags:
-              only: /.*/
+              only: /\d+.\d+.\d+/
+            branches:
+              ignore: /.*/
