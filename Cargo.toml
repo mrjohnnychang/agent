@@ -5,5 +5,4 @@ members = [
     "logdna-agent-core",
     "logdna-agent-fs",
     "logdna-agent-http",
-    "logdna-agent-k8s",
 ]
