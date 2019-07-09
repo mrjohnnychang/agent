@@ -1,8 +1,9 @@
 [package]
-name = "logdna-agent-core"
+name = "logdna-agent-config"
 version = "0.1.0"
 authors = ["CJP10 <connor.peticca@logdna.com>"]
 edition = "2018"
 
 [dependencies]
-logdna-client = "*"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.8"
