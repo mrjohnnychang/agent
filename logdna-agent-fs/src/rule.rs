@@ -1,4 +1,4 @@
-use glob::{Pattern, PatternError};
+use globber::{Pattern, Error as PatternError};
 use regex::{Error as RegexError, Regex};
 
 /// A list of rules

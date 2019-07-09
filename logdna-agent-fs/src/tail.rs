@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
 
-use crossbeam::{Receiver, Sender, unbounded};
+use chashmap::CHashMap as HashMap;
+use crossbeam::{Receiver, scope, Sender, unbounded};
 
 use agent_core::http::body::LineBuilder;
 
@@ -34,7 +34,16 @@ impl Tailer {
         self.event_sender.clone()
     }
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
-    pub fn run(mut self, sender: Sender<LineBuilder>) {
+    pub fn run(self, sender: Sender<LineBuilder>) {
+        // creates a scoped thread that lives as long as self
+        scope(|s| {
+            for _ in 0..num_cpus::get().max(1) {
+                s.spawn(|_| self.poll(sender.clone()));
+            }
+        }).expect("failed starting Tailer")
+    }
+
+    pub fn poll(&self, sender: Sender<LineBuilder>) {
         loop {
             // safe to unwrap
             let event = self.event_receiver.recv().unwrap();
@@ -63,10 +72,11 @@ impl Tailer {
             }
         }
     }
+
     // tail a file for new line(s)
-    fn tail(&mut self, path: PathBuf, sender: &Sender<LineBuilder>) {
+    fn tail(&self, path: PathBuf, sender: &Sender<LineBuilder>) {
         // get the offset from the map, return if not found
-        let offset = match self.offsets.get_mut(&path) {
+        let mut offset = match self.offsets.get_mut(&path) {
             Some(v) => v,
             None => {
                 warn!("{:?} was not found in offset table!", path);
@@ -89,7 +99,7 @@ impl Tailer {
         // if the offset is greater than the file's len
         // it's very likely a truncation occurred
         if *offset > len {
-            info!("{:?} was truncated from {} to {}", path, offset, len);
+            info!("{:?} was truncated from {} to {}", path, *offset, len);
             *offset = len;
             return;
         }
