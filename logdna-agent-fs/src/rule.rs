@@ -1,4 +1,6 @@
-use globber::{Pattern, Error as PatternError};
+use std::str::FromStr;
+
+use globber::{Error as PatternError, Pattern};
 use regex::{Error as RegexError, Regex};
 
 /// A list of rules
@@ -114,6 +116,14 @@ impl Rule for RegexRule {
     }
 }
 
+impl FromStr for RegexRule {
+    type Err = RegexError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        RegexRule::new(s)
+    }
+}
+
 /// A rule the matches it's input based on a Glob pattern, note extended glob is not supported
 pub struct GlobRule {
     inner: Pattern,
@@ -133,6 +143,14 @@ impl GlobRule {
 impl Rule for GlobRule {
     fn matches(&self, value: &str) -> bool {
         self.inner.matches(value)
+    }
+}
+
+impl FromStr for GlobRule {
+    type Err = PatternError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        GlobRule::new(s)
     }
 }
 

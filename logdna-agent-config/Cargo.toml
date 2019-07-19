@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 #agent
 agent-core = { package = "logdna-agent-core", path = "../logdna-agent-core" }
+agent-fs = { package = "logdna-agent-fs", path = "../logdna-agent-fs" }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.8"
 globber = "0.1"

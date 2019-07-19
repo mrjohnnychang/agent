@@ -1,12 +1,12 @@
 use std::convert::TryFrom;
+use std::env;
 use std::error::Error;
 use std::time::Duration;
 
 use flate2::Compression;
-use globber::Pattern;
-use regex::Regex;
 
 use agent_core::http::request::{Encoding, RequestTemplate, Schema};
+use agent_fs::rule::{GlobRule, RegexRule, Rules};
 use lazy_static::lazy_static;
 
 use crate::raw::Config as RawConfig;
@@ -14,7 +14,7 @@ use crate::raw::Config as RawConfig;
 mod raw;
 
 lazy_static! {
-    static ref DEFAULT_EXCLUDE: Vec<Pattern> = vec![
+    static ref DEFAULT_EXCLUDE: Vec<GlobRule> = vec![
         "/var/log/wtmp".parse().unwrap(),
         "/var/log/btmp".parse().unwrap(),
         "/var/log/utmp".parse().unwrap(),
@@ -28,7 +28,7 @@ lazy_static! {
         "/var/log/fluentd-buffers/**/*".parse().unwrap(),
     ];
 
-    static ref DEFAULT_INCLUDE: Vec<Pattern> = vec![
+    static ref DEFAULT_INCLUDE: Vec<GlobRule> = vec![
         "*.log".parse().unwrap(),
         "!(*.*)".parse().unwrap(),
     ];
@@ -47,10 +47,9 @@ pub struct Config {
     pub log: LogConfig,
 }
 
-impl TryFrom<RawConfig> for Config {
-    type Error = Box<Error>;
-
-    fn try_from(raw: RawConfig) -> Result<Self, Self::Error> {
+impl Config {
+    //FIXME: replace Box<Error> with a proper error type
+    pub fn new(raw: RawConfig) -> Result<Self, Box<Error>> {
         let mut template_builder = RequestTemplate::builder();
 
         template_builder.api_key(raw.http.ingestion_key);
@@ -98,14 +97,7 @@ impl TryFrom<RawConfig> for Config {
 
         let mut log_config = LogConfig {
             dirs: vec![DEFAULT_LOG_DIR.clone()],
-            include: Rules {
-                glob: DEFAULT_INCLUDE.clone(),
-                regex: vec![],
-            },
-            exclude: Rules {
-                glob: DEFAULT_EXCLUDE.clone(),
-                regex: vec![],
-            },
+            rules: Rules::new(),
         };
 
         if let Some(mut raw_log_config) = raw.log {
@@ -113,23 +105,69 @@ impl TryFrom<RawConfig> for Config {
 
             if let Some(rules) = raw_log_config.include {
                 for rule in rules.regex {
-                    log_config.include.regex.push(Regex::new(&rule)?)
+                    log_config.rules.add_inclusion(RegexRule::new(&*rule)?)
                 }
 
                 for rule in rules.glob {
-                    log_config.include.glob.push(Pattern::new(&rule)?)
+                    log_config.rules.add_inclusion(GlobRule::new(&*rule)?)
                 }
             }
 
             if let Some(rules) = raw_log_config.exclude {
                 for rule in rules.regex {
-                    log_config.exclude.regex.push(Regex::new(&rule)?)
+                    log_config.rules.add_exclusion(RegexRule::new(&*rule)?)
                 }
 
                 for rule in rules.glob {
-                    log_config.exclude.glob.push(Pattern::new(&rule)?)
+                    log_config.rules.add_exclusion(GlobRule::new(&*rule)?)
                 }
             }
+        }
+
+        //FIXME: deprecate then remove env var
+        if let Ok(host) = env::var("LDLOGHOST") {
+            template_builder.host(host);
+        }
+
+        //FIXME: deprecate then remove env var
+        if let Ok(endpoint) = env::var("LDLOGPATH") {
+            template_builder.endpoint(endpoint);
+        }
+
+        //FIXME: deprecate then remove env var
+        if let Ok(rules) = env::var("LOGDNA_EXCLUDE") {
+            rules.split_terminator(",")
+                .into_iter()
+                .filter(|r| !r.is_empty())
+                .filter_map(|r| GlobRule::new(r).ok())
+                .for_each(|r| log_config.rules.add_exclusion(r))
+        }
+
+        //FIXME: deprecate then remove env var
+        if let Ok(rules) = env::var("LOGDNA_EXCLUDE_REGEX") {
+            rules.split_terminator(",")
+                .into_iter()
+                .filter(|r| !r.is_empty())
+                .filter_map(|r| RegexRule::new(r).ok())
+                .for_each(|r| log_config.rules.add_exclusion(r))
+        }
+
+        //FIXME: deprecate then remove env var
+        if let Ok(rules) = env::var("LOGDNA_INCLUDE") {
+            rules.split_terminator(",")
+                .into_iter()
+                .filter(|r| !r.is_empty())
+                .filter_map(|r| GlobRule::new(r).ok())
+                .for_each(|r| log_config.rules.add_inclusion(r))
+        }
+
+        //FIXME: deprecate then remove env var
+        if let Ok(rules) = env::var("LOGDNA_INCLUDE_REGEX") {
+            rules.split_terminator(",")
+                .into_iter()
+                .filter(|r| !r.is_empty())
+                .filter_map(|r| RegexRule::new(r).ok())
+                .for_each(|r| log_config.rules.add_inclusion(r))
         }
 
         Ok(Config {
@@ -145,6 +183,14 @@ impl TryFrom<RawConfig> for Config {
     }
 }
 
+impl TryFrom<RawConfig> for Config {
+    type Error = Box<Error>;
+
+    fn try_from(raw: RawConfig) -> Result<Self, Self::Error> {
+        Config::new(raw)
+    }
+}
+
 pub struct HttpConfig {
     pub template: RequestTemplate,
     pub timeout: Duration,
@@ -153,11 +199,5 @@ pub struct HttpConfig {
 
 pub struct LogConfig {
     pub dirs: Vec<String>,
-    pub include: Rules,
-    pub exclude: Rules,
-}
-
-pub struct Rules {
-    pub glob: Vec<Pattern>,
-    pub regex: Vec<Regex>,
+    pub rules: Rules,
 }
