@@ -5,12 +5,14 @@ authors = ["CJP10 <connor.peticca@logdna.com>"]
 edition = "2018"
 
 [dependencies]
-#agent
+#local
 agent-core = { package = "logdna-agent-core", path = "../logdna-agent-core" }
 agent-fs = { package = "logdna-agent-fs", path = "../logdna-agent-fs" }
+
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.8"
 globber = "0.1"
 regex = "1"
 lazy_static = "1"
 flate2 = "1"
+libc = "0.2"
