@@ -4,13 +4,33 @@ use serde::{Deserialize, Serialize};
 
 use agent_core::http::params::Params;
 
-#[derive(Serialize, Deserialize, Debug)]
+macro_rules! required {
+    ($($this:ident).+) => {
+        {
+            let mut terms = Vec::new();
+            $(
+                terms.push(format!("{}", stringify!($this)));
+            )*
+            match $($this).+ {
+                Some(v) => Ok(v),
+                None => Err(ConfigError::MissingField(terms.join("."))),
+            }
+        }
+    };
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+pub enum ConfigError {
+    MissingField(String),
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct Config {
     pub http: HttpConfig,
     pub log: Option<LogConfig>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct HttpConfig {
     pub host: Option<String>,
     pub endpoint: Option<String>,
@@ -23,14 +43,14 @@ pub struct HttpConfig {
     pub body_size: Option<u64>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct LogConfig {
     pub dirs: Vec<String>,
     pub include: Option<Rules>,
     pub exclude: Option<Rules>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct Rules {
     pub glob: Vec<String>,
     pub regex: Vec<String>,
@@ -118,7 +138,14 @@ mod tests {
         // test for panic at creation
         let config = Config::default();
         assert!(config.log.is_some());
-        // make sure the config is serialise
-        assert!(serde_yaml::to_string(&config).is_ok());
+        // make sure the config can be serialized
+        let yaml = serde_yaml::to_string(&config);
+        assert!(yaml.is_ok());
+        let yaml = yaml.unwrap();
+        // make sure the config can be deserialized
+        let new_config = serde_yaml::from_str::<Config>(&yaml);
+        assert!(new_config.is_ok());
+        let new_config = new_config.unwrap();
+        assert_eq!(config, new_config);
     }
 }
