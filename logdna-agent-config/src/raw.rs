@@ -4,21 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use agent_core::http::params::Params;
 
-macro_rules! required {
-    ($($this:ident).+) => {
-        {
-            let mut terms = Vec::new();
-            $(
-                terms.push(format!("{}", stringify!($this)));
-            )*
-            match $($this).+ {
-                Some(v) => Ok(v),
-                None => Err(ConfigError::MissingField(terms.join("."))),
-            }
-        }
-    };
-}
-
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub enum ConfigError {
     MissingField(String),
