@@ -1,7 +1,7 @@
 use std::any::Any;
 
 pub use logdna_client;
-use logdna_client::body::{Line, LineBuilder};
+use logdna_client::body::LineBuilder;
 
 pub mod http {
     pub use logdna_client::*;
@@ -12,5 +12,5 @@ pub trait Middleware {
 }
 
 pub trait EventListener {
-    fn process(&self, event: Box<Any>);
+    fn process(&self, event: Box<dyn Any>);
 }

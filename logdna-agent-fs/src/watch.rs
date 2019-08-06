@@ -93,7 +93,7 @@ impl Watcher {
         let mut paths = Vec::new();
         let path = path.into();
         // paths needs to be valid utf8
-        let path_str = path.to_str().ok_or(WatchError::PathNonUtf8(path.clone()))?;
+        let path_str = path.to_str().ok_or_else(|| WatchError::PathNonUtf8(path.clone()))?;
         // if the path is a dir we need to scan it recursively
         if path.is_dir() {
             recursive_scan(&path)

@@ -107,13 +107,14 @@ impl Retry {
                 )
                 .filter(|(_, w)| Utc::now().timestamp() - w.timestamp > 15)
                 .for_each(|(p, w)| {
-                    if let None = self.line_sender
+                    if self.line_sender
                         .send(Either::Right(w.body))
                         .ok()
                         .and_then(|_|
                             remove_file(&p)
                                 .ok()
                         )
+                        .is_none()
                     {
                         error!("failed deleting retry file {:?}!", p)
                     }
