@@ -8,4 +8,5 @@ edition = "2018"
 agent-core = { package = "logdna-agent-core", path = "../logdna-agent-core" }
 agent-http = { package = "logdna-agent-http", path = "../logdna-agent-http" }
 agent-fs = { package = "logdna-agent-fs", path = "../logdna-agent-fs" }
+log = "0.4"
 env_logger = "0.6"

@@ -7,6 +7,7 @@ use agent_fs::rule::{GlobRule, RegexRule};
 use agent_fs::tail::Tailer;
 use agent_fs::watch::Watcher;
 use agent_http::client::Client;
+use agent_http::retry::Retry;
 
 fn main() {
     env_logger::init();
@@ -28,7 +29,13 @@ fn main() {
     let client = Client::new(template);
     let client_sender = client.sender();
 
-    spawn(move || tailer.run(client_sender));
+    let retry = Retry::new();
+    let retry_sender = retry.sender();
+
+    let tmp = client_sender.clone();
+    spawn(move || tailer.run(tmp));
+    let tmp = client_sender.clone();
+    spawn(move || retry.run(tmp));
     spawn(move || watcher.run(tailer_sender));
-    client.run()
+    client.run(retry_sender);
 }

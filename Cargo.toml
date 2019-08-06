@@ -6,3 +6,9 @@ members = [
     "logdna-agent-fs",
     "logdna-agent-http",
 ]
+
+[profile.release]
+opt-level = 3
+lto = true
+debug = true
+panic = "abort"

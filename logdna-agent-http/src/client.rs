@@ -1,76 +1,116 @@
-use std::time::Duration;
+use std::mem::replace;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use crossbeam::{bounded, Receiver, Sender};
+use crossbeam::{after, Receiver, Sender, unbounded};
+use either::Either;
 use tokio::prelude::Future;
-use tokio::runtime::{Builder, Runtime};
+use tokio::runtime::Runtime;
 
-use agent_core::http::body::{IngestBody, LineBuilder};
+use agent_core::http::body::{IngestBody, Line, LineBuilder};
 use agent_core::http::client::Client as HttpClient;
+use agent_core::http::error::HttpError;
 use agent_core::http::request::RequestTemplate;
 use agent_core::http::response::Response;
 
+/// Http(s) client used to send logs to the Ingest API
 pub struct Client {
     inner: HttpClient,
     runtime: Runtime,
-    line_sender: Sender<LineBuilder>,
-    line_receiver: Receiver<LineBuilder>,
+    line_sender: Sender<Either<LineBuilder, IngestBody>>,
+    line_receiver: Receiver<Either<LineBuilder, IngestBody>>,
+    retry_sender: Sender<Arc<IngestBody>>,
+
+    buffer: Vec<Line>,
+    buffer_bytes: usize,
+    buffer_timeout: Receiver<Instant>,
 }
 
 impl Client {
+    /// Used to create a new instance of client, requiring a channel sender for retry
+    /// and a request template for building ingest requests
     pub fn new(template: RequestTemplate) -> Self {
-        let mut runtime = Builder::new()
-            .core_threads(1)
-            .build()
-            .expect("Runtime::new()");
-        let (s, r) = bounded(0);
+        let mut runtime = Runtime::new().expect("Runtime::new()");
+        let (s, r) = unbounded();
+        let (temp, _) = unbounded();
         Self {
             inner: HttpClient::new(template, &mut runtime),
             runtime,
             line_sender: s,
             line_receiver: r,
+            retry_sender: temp,
+
+            buffer: Vec::new(),
+            buffer_bytes: 0,
+            buffer_timeout: after(Duration::from_millis(250)),
         }
     }
-
-    pub fn sender(&self) -> Sender<LineBuilder> {
+    /// Returns the channel sender used to send data from other threads
+    pub fn sender(&self) -> Sender<Either<LineBuilder, IngestBody>> {
         self.line_sender.clone()
     }
+    /// The main logic loop, consumes self because it should only be called once
+    pub fn run(mut self, retry_sender: Sender<Arc<IngestBody>>) {
+        self.retry_sender = retry_sender;
 
-    pub fn run(mut self) {
-        let mut lines = Vec::new();
-        let mut lines_bytes = 0;
         loop {
-            let lines_to_send = match self.line_receiver.recv_timeout(Duration::from_millis(250)) {
-                Ok(line) => {
-                    match line.build() {
-                        Ok(line) => {
-                            lines.push(line);
-                            if lines_bytes < 2 * 1024 * 1024 {
-                                continue;
-                            }
-                            lines
+            if self.buffer_bytes < 2 * 1024 * 1024 {
+                let msg = select! {
+                    recv(self.line_receiver) -> msg => msg,
+                    recv(self.buffer_timeout) -> _ => {
+                        self.flush();
+                        continue;
+                    },
+                };
+                // The left hand side of the either is new lines the come from the Tailer
+                // The right hand side of the either is ingest bodies that are ready for retry
+                match msg {
+                    Ok(Either::Left(line)) => {
+                        if let Ok(line) = line.build() {
+                            self.buffer_bytes += line.line.len();
+                            self.buffer.push(line);
                         }
-                        Err(_) => { continue; }
                     }
-                }
-                Err(_) => lines,
-            };
-            lines = Vec::new();
-            lines_bytes = 0;
-
-            if lines_to_send.is_empty() {
-                continue
+                    Ok(Either::Right(body)) => {
+                        self.send(body);
+                    }
+                    Err(_) => {}
+                };
             }
 
-            let fut = self.inner.send(IngestBody::new(lines_to_send))
-                .then(|r| {
-                    match r {
-                        Ok(Response::Failed(_, s, r)) => println!("{},{}", s, r),
-                        Err(e) => println!("{}", e),
-                        _ => {}
-                    }
-                    Ok(())
-                });
-            self.runtime.spawn(fut);
+            self.flush()
         }
+    }
+
+    fn flush(&mut self) {
+        let buffer = replace(&mut self.buffer, Vec::new());
+        self.buffer_bytes = 0;
+        self.buffer_timeout = after(Duration::from_millis(250));
+
+        if buffer.is_empty() {
+            return;
+        }
+
+        self.send(IngestBody::new(buffer));
+    }
+
+    fn send(&mut self, body: IngestBody) {
+        let sender = self.retry_sender.clone();
+        let fut = self.inner.send(body)
+            .then(move |r| {
+                match r {
+                    Ok(Response::Failed(_, s, r)) => warn!("bad response {}: {}", s, r),
+                    Err(HttpError::Send(body, e)) => {
+                        warn!("failed sending http request, retrying: {}", e);
+                        sender.send(body).unwrap();
+                    }
+                    Err(e) => {
+                        warn!("failed sending http request: {}", e);
+                    }
+                    Ok(Response::Sent) => {} //success
+                };
+                Ok(())
+            });
+        self.runtime.spawn(fut);
     }
 }
