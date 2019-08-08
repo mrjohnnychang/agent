@@ -1,13 +1,7 @@
-use std::ffi::CString;
-
+use crate::get_hostname;
 use serde::{Deserialize, Serialize};
 
 use agent_core::http::params::Params;
-
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub enum ConfigError {
-    MissingField(String),
-}
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct Config {
@@ -100,23 +94,9 @@ impl Default for LogConfig {
     }
 }
 
-
-fn get_hostname() -> Option<String> {
-    let name = CString::new(Vec::with_capacity(512)).ok()?.into_raw();
-    if unsafe { libc::gethostname(name, 512) } == 0 {
-        return unsafe { CString::from_raw(name) }.into_string().ok();
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_hostname() {
-        assert!(get_hostname().is_some());
-    }
 
     #[test]
     fn test_default() {
