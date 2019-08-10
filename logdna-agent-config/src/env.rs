@@ -15,9 +15,9 @@ pub struct Config {
     // LOGDNA_ENDPOINT
     // deprecated: LDLOGPATH
     pub endpoint: Option<String>,
-    // LOGDNA_API_KEY
+    // LOGDNA_INGESTION_KEY
     // deprecated: LOGDNA_AGENT_KEY
-    pub api_key: Option<String>,
+    pub ingestion_key: Option<String>,
     // LOGDNA_USE_SSL
     // deprecated: LDLOGSSL
     pub use_ssl: Option<bool>,
@@ -53,13 +53,13 @@ pub struct Config {
 }
 
 impl Config {
-    fn parse() -> Self {
+    pub fn parse() -> Self {
         Self {
             config_file: parse_value(&["LOGDNA_CONFIG_FILE", "DEFAULT_CONF_FILE"])
                 .unwrap_or_else(|| PathBuf::from("/etc/logdna/config.yaml")),
             host: parse_value(&["LOGDNA_HOST", "LDLOGHOST"]),
             endpoint: parse_value(&["LOGDNA_ENDPOINT", "LDLOGPATH"]),
-            api_key: parse_value(&["LOGDNA_API_KEY", "LOGDNA_AGENT_KEY"]),
+            ingestion_key: parse_value(&["LOGDNA_INGESTION_KEY", "LOGDNA_AGENT_KEY"]),
             use_ssl: parse_value(&["LOGDNA_USE_SSL", "LDLOGSSL"]),
             use_compression: parse_value(&["LOGDNA_USE_COMPRESSION", "COMPRESS"]),
             gzip_level: parse_value(&["LOGDNA_GZIP_LEVEL", "GZIP_COMPRESS_LEVEL"]),
@@ -136,8 +136,8 @@ mod tests {
         );
 
         env_test!(
-            &["LOGDNA_API_KEY", "LOGDNA_AGENT_KEY"]
-            => api_key
+            &["LOGDNA_INGESTION_KEY", "LOGDNA_AGENT_KEY"]
+            => ingestion_key
             => Some("supersecretkey".to_string()), "supersecretkey"
         );
 

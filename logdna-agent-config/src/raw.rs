@@ -1,22 +1,23 @@
-use crate::get_hostname;
 use serde::{Deserialize, Serialize};
 
 use agent_core::http::params::Params;
 
+use crate::get_hostname;
+
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct Config {
     pub http: HttpConfig,
-    pub log: Option<LogConfig>,
+    pub log: LogConfig,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct HttpConfig {
     pub host: Option<String>,
     pub endpoint: Option<String>,
-    pub https: Option<bool>,
+    pub use_ssl: Option<bool>,
     pub timeout: Option<u64>,
-    pub compress: Option<bool>,
-    pub compression_level: Option<u32>,
+    pub use_compression: Option<bool>,
+    pub gzip_level: Option<u32>,
     pub ingestion_key: Option<String>,
     pub params: Option<Params>,
     pub body_size: Option<u64>,
@@ -39,7 +40,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             http: HttpConfig::default(),
-            log: Some(LogConfig::default()),
+            log: LogConfig::default(),
         }
     }
 }
@@ -49,10 +50,10 @@ impl Default for HttpConfig {
         HttpConfig {
             host: Some("logs.logdna.com".to_string()),
             endpoint: Some("/logs/agent".to_string()),
-            https: Some(true),
+            use_ssl: Some(true),
             timeout: Some(10_000),
-            compress: Some(true),
-            compression_level: Some(2),
+            use_compression: Some(true),
+            gzip_level: Some(2),
             ingestion_key: None,
             params: Params::builder()
                 .hostname(get_hostname().unwrap_or(String::new()))
@@ -102,7 +103,6 @@ mod tests {
     fn test_default() {
         // test for panic at creation
         let config = Config::default();
-        assert!(config.log.is_some());
         // make sure the config can be serialized
         let yaml = serde_yaml::to_string(&config);
         assert!(yaml.is_ok());

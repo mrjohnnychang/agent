@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::str::FromStr;
 
 use globber::{Error as PatternError, Pattern};
@@ -7,7 +8,7 @@ use regex::{Error as RegexError, Regex};
 pub type RuleList = Vec<Box<Rule + Send>>;
 
 /// A trait for implementing a rule, see GlobRule/RegexRule for an example
-pub trait Rule {
+pub trait Rule: Debug {
     /// Takes a value and returns true or false based on if it matches
     fn matches(&self, value: &str) -> bool;
 }
@@ -34,7 +35,7 @@ impl Status {
 }
 
 /// Holds both exclusion and inclusion rules
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Rules {
     inclusion: RuleList,
     exclusion: RuleList,
@@ -95,6 +96,7 @@ impl Rules {
 }
 
 /// A rule the matches it's input based on a Regex
+#[derive(Debug)]
 pub struct RegexRule {
     inner: Regex,
 }
@@ -125,6 +127,7 @@ impl FromStr for RegexRule {
 }
 
 /// A rule the matches it's input based on a Glob pattern, note extended glob is not supported
+#[derive(Debug)]
 pub struct GlobRule {
     inner: Pattern,
 }
