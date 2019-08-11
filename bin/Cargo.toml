@@ -1,0 +1,17 @@
+[package]
+name = "logdna-agent"
+version = "0.1.0"
+authors = ["CJP10 <connor.peticca@logdna.com>"]
+edition = "2018"
+
+[[bin]]
+name = "logdna-agent"
+path = "src/main.rs"
+
+[dependencies]
+#local
+http = { package = "http", path = "../common/http" }
+fs = { package = "fs", path = "../common/fs" }
+
+log = "0.4"
+env_logger = "0.6"

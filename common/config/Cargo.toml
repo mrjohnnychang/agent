@@ -1,13 +1,13 @@
 [package]
-name = "logdna-agent-config"
+name = "config"
 version = "0.1.0"
 authors = ["CJP10 <connor.peticca@logdna.com>"]
 edition = "2018"
 
 [dependencies]
 #local
-agent-core = { package = "logdna-agent-core", path = "../logdna-agent-core" }
-agent-fs = { package = "logdna-agent-fs", path = "../logdna-agent-fs" }
+fs = { package = "fs", path = "../fs" }
+http = { package = "http", path = "../http" }
 
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.8"

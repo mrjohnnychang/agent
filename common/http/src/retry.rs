@@ -9,7 +9,7 @@ use either::Either;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use agent_core::http::body::{IngestBody, LineBuilder};
+use crate::types::body::{IngestBody, LineBuilder};
 
 quick_error! {
     #[derive(Debug)]

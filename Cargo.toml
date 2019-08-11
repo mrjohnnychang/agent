@@ -1,10 +1,9 @@
 [workspace]
 members = [
-    "logdna-agent",
-    "logdna-agent-config",
-    "logdna-agent-core",
-    "logdna-agent-fs",
-    "logdna-agent-http",
+    "bin",
+    "common/config",
+    "common/fs",
+    "common/http",
 ]
 
 [profile.release]

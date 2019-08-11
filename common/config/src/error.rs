@@ -6,7 +6,7 @@ pub enum ConfigError {
     MissingField(&'static str),
     Io(io::Error),
     Serde(serde_yaml::Error),
-    Template(agent_core::http::error::TemplateError),
+    Template(http::types::error::TemplateError),
     Glob(globber::Error),
     Regex(regex::Error),
 }
@@ -36,8 +36,8 @@ impl From<serde_yaml::Error> for ConfigError {
     }
 }
 
-impl From<agent_core::http::error::TemplateError> for ConfigError {
-    fn from(e: agent_core::http::error::TemplateError) -> Self {
+impl From<http::types::error::TemplateError> for ConfigError {
+    fn from(e: http::types::error::TemplateError) -> Self {
         ConfigError::Template(e)
     }
 }

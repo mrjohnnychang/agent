@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use chashmap::CHashMap as HashMap;
 use crossbeam::{Receiver, scope, Sender, unbounded};
 
-use agent_core::http::body::LineBuilder;
-use agent_core::http::body::IngestBody;
+use http::types::body::LineBuilder;
+use http::types::body::IngestBody;
 use either::Either;
 
 use crate::Event;

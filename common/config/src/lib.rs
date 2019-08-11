@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use flate2::Compression;
 
-use agent_core::http::request::{Encoding, RequestTemplate, Schema};
-use agent_fs::rule::{GlobRule, RegexRule, Rules};
+use http::types::request::{Encoding, RequestTemplate, Schema};
+use fs::rule::{GlobRule, RegexRule, Rules};
 
 use crate::error::ConfigError;
 use crate::raw::Config as RawConfig;

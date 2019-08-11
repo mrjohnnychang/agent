@@ -1,13 +1,13 @@
 use std::env;
 use std::thread::spawn;
 
-use agent_core::http::params::Params;
-use agent_core::http::request::RequestTemplate;
-use agent_fs::rule::{GlobRule, RegexRule};
-use agent_fs::tail::Tailer;
-use agent_fs::watch::Watcher;
-use agent_http::client::Client;
-use agent_http::retry::Retry;
+use http::types::params::Params;
+use http::types::request::RequestTemplate;
+use fs::rule::{GlobRule, RegexRule};
+use fs::tail::Tailer;
+use fs::watch::Watcher;
+use http::client::Client;
+use http::retry::Retry;
 
 fn main() {
     env_logger::init();

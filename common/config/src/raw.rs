@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use agent_core::http::params::Params;
+use http::types::params::Params;
 
 use crate::get_hostname;
 

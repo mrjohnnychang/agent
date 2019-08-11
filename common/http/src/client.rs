@@ -7,11 +7,11 @@ use either::Either;
 use tokio::prelude::Future;
 use tokio::runtime::Runtime;
 
-use agent_core::http::body::{IngestBody, Line, LineBuilder};
-use agent_core::http::client::Client as HttpClient;
-use agent_core::http::error::HttpError;
-use agent_core::http::request::RequestTemplate;
-use agent_core::http::response::Response;
+use crate::types::body::{IngestBody, Line, LineBuilder};
+use crate::types::client::Client as HttpClient;
+use crate::types::error::HttpError;
+use crate::types::request::RequestTemplate;
+use crate::types::response::Response;
 
 /// Http(s) client used to send logs to the Ingest API
 pub struct Client {

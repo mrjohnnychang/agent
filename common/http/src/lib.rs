@@ -8,6 +8,10 @@ extern crate crossbeam;
 pub mod client;
 pub mod retry;
 
+pub mod types {
+    pub use logdna_client::*;
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

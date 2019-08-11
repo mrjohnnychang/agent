@@ -1,12 +1,13 @@
 [package]
-name = "logdna-agent-fs"
+name = "fs"
 version = "0.1.0"
 authors = ["CJP10 <connor.peticca@logdna.com>"]
 edition = "2018"
 
 [dependencies]
-#agent
-agent-core = { package = "logdna-agent-core", path = "../logdna-agent-core" }
+#local
+http = { package = "http", path = "../http" }
+
 #io
 inotify = "0.7"
 #error
