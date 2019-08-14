@@ -2,7 +2,7 @@ use std::mem::replace;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crossbeam::{after, Receiver, Sender, unbounded};
+use crossbeam::{after, bounded, Receiver, Sender};
 use either::Either;
 use tokio::prelude::Future;
 use tokio::runtime::Runtime;
@@ -32,8 +32,8 @@ impl Client {
     /// and a request template for building ingest requests
     pub fn new(template: RequestTemplate) -> Self {
         let mut runtime = Runtime::new().expect("Runtime::new()");
-        let (s, r) = unbounded();
-        let (temp, _) = unbounded();
+        let (s, r) = bounded(256);
+        let (temp, _) = bounded(256);
         Self {
             inner: HttpClient::new(template, &mut runtime),
             runtime,
@@ -44,7 +44,7 @@ impl Client {
             buffer: Vec::new(),
             buffer_max_size: 2 * 1024 * 1024,
             buffer_bytes: 0,
-            buffer_timeout: after(Duration::from_millis(250)),
+            buffer_timeout: new_timeout(),
         }
     }
     /// Returns the channel sender used to send data from other threads
@@ -72,15 +72,17 @@ impl Client {
                             self.buffer_bytes += line.line.len();
                             self.buffer.push(line);
                         }
+                        continue;
                     }
                     Ok(Either::Right(body)) => {
                         self.send(body);
+                        continue;
                     }
                     Err(_) => {}
                 };
+            } else {
+                self.flush()
             }
-
-            self.flush()
         }
     }
 

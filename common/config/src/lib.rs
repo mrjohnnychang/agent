@@ -220,7 +220,7 @@ impl TryFrom<RawConfig> for Config {
 
         let http = HttpConfig {
             template: template_builder.build()?,
-            timeout: Duration::from_secs(
+            timeout: Duration::from_millis(
                 raw.http.timeout.
                     ok_or(ConfigError::MissingField("http.timeout"))?
             ),

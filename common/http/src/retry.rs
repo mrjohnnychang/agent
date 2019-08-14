@@ -4,7 +4,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use chrono::prelude::Utc;
-use crossbeam::{Receiver, scope, Sender, unbounded};
+use crossbeam::{Receiver, scope, Sender, bounded};
 use either::Either;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -37,8 +37,8 @@ struct Wrapper {
 
 impl Retry {
     pub fn new() -> Retry {
-        let (s, r) = unbounded();
-        let (temp, _) = unbounded();
+        let (s, r) = bounded(256);
+        let (temp, _) = bounded(256);
         Retry {
             retry_sender: s,
             retry_receiver: r,

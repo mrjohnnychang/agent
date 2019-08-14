@@ -3,7 +3,7 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
 
 use chashmap::CHashMap as HashMap;
-use crossbeam::{Receiver, scope, Sender, unbounded};
+use crossbeam::{Receiver, scope, Sender, bounded};
 
 use http::types::body::LineBuilder;
 use http::types::body::IngestBody;
@@ -24,7 +24,7 @@ pub struct Tailer {
 impl Tailer {
     /// Creates new instance of Tailer
     pub fn new() -> Self {
-        let (s, r) = unbounded();
+        let (s, r) = bounded(32_000);
         Self {
             event_sender: s,
             event_receiver: r,
@@ -123,7 +123,6 @@ impl Tailer {
                 Err(e) => {
                     error!("error reading from file {:?}: {:?}", path, e);
                     return;
-                    ;
                 }
             };
             // try to parse the raw data as utf8
