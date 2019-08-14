@@ -116,6 +116,10 @@ impl Client {
                         warn!("failed sending http request, retrying: {}", e);
                         sender.send(body).unwrap();
                     }
+                    Err(HttpError::Timeout(body)) => {
+                        warn!("failed sending http request, retrying: request timed out!");
+                        sender.send(body).unwrap();
+                    }
                     Err(e) => {
                         warn!("failed sending http request: {}", e);
                     }
