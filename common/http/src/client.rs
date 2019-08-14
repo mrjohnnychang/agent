@@ -22,6 +22,7 @@ pub struct Client {
     retry_sender: Sender<Arc<IngestBody>>,
 
     buffer: Vec<Line>,
+    buffer_max_size: usize,
     buffer_bytes: usize,
     buffer_timeout: Receiver<Instant>,
 }
@@ -41,6 +42,7 @@ impl Client {
             retry_sender: temp,
 
             buffer: Vec::new(),
+            buffer_max_size: 2 * 1024 * 1024,
             buffer_bytes: 0,
             buffer_timeout: after(Duration::from_millis(250)),
         }
@@ -54,7 +56,7 @@ impl Client {
         self.retry_sender = retry_sender;
 
         loop {
-            if self.buffer_bytes < 2 * 1024 * 1024 {
+            if self.buffer_bytes < self.buffer_max_size {
                 let msg = select! {
                     recv(self.line_receiver) -> msg => msg,
                     recv(self.buffer_timeout) -> _ => {
@@ -82,10 +84,18 @@ impl Client {
         }
     }
 
+    pub fn set_max_buffer_size(&mut self, size: usize) {
+        self.buffer_max_size = size;
+    }
+
+    pub fn set_timeout(&mut self, timeout: Duration) {
+        self.inner.set_timeout(timeout)
+    }
+
     fn flush(&mut self) {
         let buffer = replace(&mut self.buffer, Vec::new());
         self.buffer_bytes = 0;
-        self.buffer_timeout = after(Duration::from_millis(250));
+        self.buffer_timeout = new_timeout();
 
         if buffer.is_empty() {
             return;
@@ -113,4 +123,8 @@ impl Client {
             });
         self.runtime.spawn(fut);
     }
+}
+
+fn new_timeout() -> Receiver<Instant> {
+    after(Duration::from_millis(250))
 }

@@ -1,9 +1,11 @@
-use std::env;
+#[macro_use]
+extern crate log;
+
+use std::convert::TryFrom;
 use std::thread::spawn;
 
-use http::types::params::Params;
-use http::types::request::RequestTemplate;
-use fs::rule::{GlobRule, RegexRule};
+use config::{env::Config as EnvConfig, raw::Config as RawConfig};
+use config::Config;
 use fs::tail::Tailer;
 use fs::watch::Watcher;
 use http::client::Client;
@@ -12,21 +14,33 @@ use http::retry::Retry;
 fn main() {
     env_logger::init();
 
+    let config = match Config::new() {
+        Ok(v) => v,
+        Err(e) => {
+            error!("failed to load config: {}", e);
+            warn!("falling back to default config!");
+            match Config::try_from((EnvConfig::parse(), RawConfig::default())) {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("falling back to default failed: {}", e);
+                    panic!()
+                }
+            }
+        }
+    };
+
     let watcher = Watcher::builder()
-        .add("/var/log/")
-        .include(GlobRule::new("*.log").unwrap())
-        .include(RegexRule::new(r#"/.+/[^.]*$"#).unwrap())
-        .build().unwrap();
+        .add_all(config.log.dirs)
+        .append_all(config.log.rules)
+        .build()
+        .unwrap();
 
     let tailer = Tailer::new();
     let tailer_sender = tailer.sender();
 
-    let template = RequestTemplate::builder()
-        .params(Params::builder().hostname("connor-pc").build().unwrap())
-        .api_key(env::var("API_KEY").expect("api key missing"))
-        .build().unwrap();
-
-    let client = Client::new(template);
+    let mut client = Client::new(config.http.template);
+    client.set_max_buffer_size(config.http.body_size);
+    client.set_timeout(config.http.timeout);
     let client_sender = client.sender();
 
     let retry = Retry::new();

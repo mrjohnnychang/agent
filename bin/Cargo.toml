@@ -12,6 +12,7 @@ path = "src/main.rs"
 #local
 http = { package = "http", path = "../common/http" }
 fs = { package = "fs", path = "../common/fs" }
+config = { package = "config", path = "../common/config" }
 
 log = "0.4"
 env_logger = "0.6"

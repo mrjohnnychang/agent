@@ -3,6 +3,7 @@ use std::str::FromStr;
 use config_macro::env_config;
 
 use serde::Deserialize;
+use std::ops::{Deref, DerefMut};
 
 #[env_config]
 #[derive(Deserialize, Debug)]
@@ -45,7 +46,21 @@ pub struct Config {
 }
 
 #[derive(Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct EnvList<T: FromStr>(Vec<T>);
+pub struct EnvList<T: FromStr>(pub Vec<T>);
+
+impl<T: FromStr> Deref for EnvList<T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target{
+        &self.0
+    }
+}
+
+impl<T: FromStr> DerefMut for EnvList<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target{
+        &mut self.0
+    }
+}
 
 impl<T: FromStr> FromStr for EnvList<T> {
     type Err = ();

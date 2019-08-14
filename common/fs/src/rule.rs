@@ -93,6 +93,14 @@ impl Rules {
         self.exclusion.append(&mut rules.exclusion);
         self.inclusion.append(&mut rules.inclusion);
     }
+    /// Getter for inclusion list
+    pub fn inclusion_list(&self) -> &RuleList {
+        &self.inclusion
+    }
+    /// Getter for exclusion list
+    pub fn exclusion_list(&self) -> &RuleList {
+        &self.exclusion
+    }
 }
 
 /// A rule the matches it's input based on a Regex

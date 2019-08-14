@@ -5,7 +5,7 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use std::collections::HashMap;
 
-use proc_macro2::{Ident, TokenStream as TokenStream2};
+use proc_macro2::{Ident, TokenStream as TokenStream2, Span};
 use syn::{ItemStruct, Lit, Meta, NestedMeta};
 
 use quote::{quote, TokenStreamExt, ToTokens};
@@ -75,12 +75,16 @@ pub fn env_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     input.to_tokens(&mut new_item);
-    new_item.append_all(generate_env_vars(name.clone(), field_map.clone(), default_map.clone()));
-    new_item.append_all(generate_tests(name, field_map, default_map, example_map));
+    new_item.append_all(generate_env_vars(&name, &field_map, &default_map));
+    new_item.append_all(generate_tests(&name, &field_map, &default_map, &example_map));
     TokenStream::from(new_item)
 }
 
-fn generate_env_vars(name: Ident, field_map: HashMap<Ident, Vec<String>>, default_map: HashMap<Ident, Lit>) -> TokenStream2 {
+fn generate_env_vars(
+    name: &Ident,
+    field_map: &HashMap<Ident, Vec<String>>,
+    default_map: &HashMap<Ident, Lit>,
+) -> TokenStream2 {
     let mut fields = TokenStream2::new();
 
     for (field, env_vars) in field_map {
@@ -101,6 +105,24 @@ fn generate_env_vars(name: Ident, field_map: HashMap<Ident, Vec<String>>, defaul
         }
     }
 
+    let mut methods = TokenStream2::new();
+    for (field, env_vars) in field_map {
+        let mut tokens = TokenStream2::new();
+        for env_var in env_vars {
+            tokens.append_all(quote!(#env_var,))
+        }
+
+        let method_name = Ident::new(&format!("{}_vars", field), Span::call_site());
+        methods.append_all(quote! {
+            pub fn #method_name() -> Vec<std::string::String> {
+                [#tokens]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            }
+        });
+    }
+
     return quote! {
 
         impl #name {
@@ -109,6 +131,9 @@ fn generate_env_vars(name: Ident, field_map: HashMap<Ident, Vec<String>>, defaul
                     #fields
                 }
             }
+
+            #methods
+
         }
 
         fn first_non_empty(envs: &[&str]) -> Option<String> {
@@ -127,7 +152,12 @@ fn generate_env_vars(name: Ident, field_map: HashMap<Ident, Vec<String>>, defaul
     };
 }
 
-fn generate_tests(name: Ident, field_map: HashMap<Ident, Vec<String>>, default_map: HashMap<Ident, Lit>, example_map: HashMap<Ident, Lit>) -> TokenStream2 {
+fn generate_tests(
+    name: &Ident,
+    field_map: &HashMap<Ident, Vec<String>>,
+    default_map: &HashMap<Ident, Lit>,
+    example_map: &HashMap<Ident, Lit>,
+) -> TokenStream2 {
     let mut tests = TokenStream2::new();
 
     for (field, env_vars) in field_map {

@@ -4,6 +4,7 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug)]
 pub enum ConfigError {
     MissingField(&'static str),
+    MissingEnvVar(Vec<String>),
     Io(io::Error),
     Serde(serde_yaml::Error),
     Template(http::types::error::TemplateError),
@@ -14,12 +15,16 @@ pub enum ConfigError {
 impl Display for ConfigError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         match self {
-            ConfigError::MissingField(field) => write!(f, "config error: {} is a required field", field),
-            ConfigError::Io(e) => write!(f, "config error: {}", e),
-            ConfigError::Serde(e) => write!(f, "config error: {}", e),
-            ConfigError::Template(e) => write!(f, "config error: {}", e),
-            ConfigError::Glob(e) => write!(f, "config error: {}", e),
-            ConfigError::Regex(e) => write!(f, "config error: {}", e),
+            ConfigError::MissingField(field) => write!(f, "{} is a required field", field),
+            ConfigError::MissingEnvVar(vars) => {
+                let vars = vars.join(" or ");
+                write!(f, "one of {} needs to be set ", vars)
+            },
+            ConfigError::Io(e) => write!(f, "{}", e),
+            ConfigError::Serde(e) => write!(f, "{}", e),
+            ConfigError::Template(e) => write!(f, "{}", e),
+            ConfigError::Glob(e) => write!(f, "{}", e),
+            ConfigError::Regex(e) => write!(f, "{}", e),
         }
     }
 }

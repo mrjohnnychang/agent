@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use http::types::params::Params;
 
 use crate::get_hostname;
+use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct Config {
@@ -20,12 +21,12 @@ pub struct HttpConfig {
     pub gzip_level: Option<u32>,
     pub ingestion_key: Option<String>,
     pub params: Option<Params>,
-    pub body_size: Option<u64>,
+    pub body_size: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct LogConfig {
-    pub dirs: Vec<String>,
+    pub dirs: Vec<PathBuf>,
     pub include: Option<Rules>,
     pub exclude: Option<Rules>,
 }
@@ -67,7 +68,7 @@ impl Default for HttpConfig {
 impl Default for LogConfig {
     fn default() -> Self {
         LogConfig {
-            dirs: vec!["/var/logs/".to_string()],
+            dirs: vec!["/var/log/".into()],
             include: Some(Rules {
                 glob: vec![
                     "*.log".parse().unwrap(),
