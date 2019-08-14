@@ -8,6 +8,7 @@ edition = "2018"
 #local
 fs = { package = "fs", path = "../fs" }
 http = { package = "http", path = "../http" }
+config-macro = { package = "config-macro", path = "../config-macro" }
 
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.8"

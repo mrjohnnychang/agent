@@ -144,4 +144,5 @@ mod tests {
         raw.http.ingestion_key = Some("emptyingestionkey".to_string());
         assert!(Config::try_from(raw).is_ok());
     }
+
 }
