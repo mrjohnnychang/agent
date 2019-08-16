@@ -1,5 +1,5 @@
 # select build image
-FROM rust:1.36 as build
+FROM rust:1.37 as build
 
 COPY . /agent
 WORKDIR /agent
