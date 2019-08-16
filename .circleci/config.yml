@@ -22,8 +22,8 @@ jobs:
           name: Build Docker image
           command: |
             echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
-            docker build -t $IMAGE_NAME:stable -t $IMAGE_NAME:latest -t $IMAGE_NAME:$CIRCLE_TAG .
-            docker push $IMAGE_NAME:stable $IMAGE_NAME:latest -t $IMAGE_NAME:$CIRCLE_TAG
+            docker build -t $IMAGE_NAME:$CIRCLE_TAG .
+            docker push $IMAGE_NAME:$CIRCLE_TAG
   build-master:
     environment:
       IMAGE_NAME: logdna/logdna-agent-v2
