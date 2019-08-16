@@ -151,7 +151,7 @@ impl Watcher {
             let path = match self.watch_descriptors.get(&event.wd)
                 .map(|p| p.join(event.name.unwrap_or(&OsString::new()))) {
                 Some(v) => v,
-                None => {return;}
+                None => { return; }
             };
 
             match self.watch(&path) {
@@ -228,7 +228,17 @@ fn recursive_scan(path: &PathBuf) -> Vec<PathBuf> {
 
 // follow a symlink to its "real" path
 fn follow_link(path: PathBuf) -> PathBuf {
-    read_link(&path).unwrap_or(path)
+    let mut new_path = path.clone();
+    loop {
+        match read_link(&new_path) {
+            Ok(path) => {
+                new_path = path;
+                continue;
+            },
+            Err(_) => { break; }
+        }
+    }
+    new_path
 }
 
 /// Creates an instance of a Watcher
