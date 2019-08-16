@@ -2,8 +2,8 @@ use std::fs::{File, metadata};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
 
-use chashmap::CHashMap as HashMap;
-use crossbeam::{bounded, Receiver, scope, Sender};
+use hashbrown::HashMap;
+use crossbeam::{bounded, Receiver, Sender};
 use either::Either;
 
 use http::types::body::IngestBody;
@@ -36,16 +36,7 @@ impl Tailer {
         self.event_sender.clone()
     }
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
-    pub fn run(self, sender: Sender<Either<LineBuilder, IngestBody>>) {
-        // creates a scoped thread that lives as long as self
-        scope(|s| {
-            for _ in 0..num_cpus::get().max(1) {
-                s.spawn(|_| self.poll(sender.clone()));
-            }
-        }).expect("failed starting Tailer")
-    }
-
-    pub fn poll(&self, sender: Sender<Either<LineBuilder, IngestBody>>) {
+    pub fn run(mut self, sender: Sender<Either<LineBuilder, IngestBody>>) {
         loop {
             // safe to unwrap
             let event = self.event_receiver.recv().unwrap();
@@ -76,9 +67,9 @@ impl Tailer {
     }
 
     // tail a file for new line(s)
-    fn tail(&self, path: PathBuf, sender: &Sender<Either<LineBuilder, IngestBody>>) {
+    fn tail(&mut self, path: PathBuf, sender: &Sender<Either<LineBuilder, IngestBody>>) {
         // get the offset from the map, return if not found
-        let mut offset = match self.offsets.get_mut(&path) {
+        let offset = match self.offsets.get_mut(&path) {
             Some(v) => v,
             None => {
                 warn!("{:?} was not found in offset table!", path);
