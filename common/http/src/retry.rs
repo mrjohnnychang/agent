@@ -4,10 +4,11 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use chrono::prelude::Utc;
-use crossbeam::{Receiver, scope, Sender, bounded};
+use crossbeam::{bounded, Receiver, scope, Sender};
 use either::Either;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use std::str::FromStr;
 
 use crate::types::body::{IngestBody, LineBuilder};
 
@@ -20,6 +21,18 @@ quick_error! {
         Serde(e: serde_json::Error){
             from()
         }
+        Recv(e: crossbeam::RecvError){
+            from()
+        }
+        Send(e: crossbeam::SendError<Either<LineBuilder, IngestBody>>){
+            from()
+        }
+        NonUTF8(path: std::path::PathBuf){
+            display("{:?} is not valid utf8", path)
+        }
+        InvalidFileName(s: std::string::String){
+            display("{} is not a valid file name", s)
+        }
     }
 }
 
@@ -27,12 +40,6 @@ pub struct Retry {
     retry_sender: Sender<Arc<IngestBody>>,
     retry_receiver: Receiver<Arc<IngestBody>>,
     line_sender: Sender<Either<LineBuilder, IngestBody>>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct Wrapper {
-    body: IngestBody,
-    timestamp: i64,
 }
 
 impl Retry {
@@ -55,72 +62,79 @@ impl Retry {
 
         create_dir_all("/tmp/logdna/").expect("can't create /tmp/logdna");
         scope(|s| {
-            s.spawn(|_| self.poll_incoming());
-            s.spawn(|_| self.poll_filesystem());
+            s.spawn(|_| self.handle_incoming());
+            s.spawn(|_| self.handle_outgoing());
         }).expect("failed starting Retry")
     }
 
-    fn poll_incoming(&self) {
+    fn handle_incoming(&self) {
         loop {
-            let body = self.retry_receiver.recv().unwrap();
-
-            let wrapper = match Arc::try_unwrap(body) {
-                Ok(v) => v,
-                Err(v) => v.as_ref().clone(),
-            };
-
-            let err = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open(format!("/tmp/logdna/{}.retry", Uuid::new_v4().to_string()))
-                .map_err(Error::from)
-                .and_then(|f| Ok(serde_json::to_writer(f, &wrapper)?));
-
-            if let Err(e) = err {
-                error!("retry has failed: {}", e);
+            if let Err(e) = self.poll_incoming() {
+                error!("failed to write retry: {}", e)
             }
         }
     }
 
-    fn poll_filesystem(&self) {
+    fn poll_incoming(&self) -> Result<(), Error> {
+        let body = self.retry_receiver.recv()?;
+
+        let body = match Arc::try_unwrap(body) {
+            Ok(v) => v,
+            Err(v) => v.as_ref().clone(),
+        };
+
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(format!(
+                "/tmp/logdna/{}_{}.retry",
+                Utc::now().timestamp(),
+                Uuid::new_v4().to_string()
+            ))?;
+
+        Ok(serde_json::to_writer(file, &body)?)
+    }
+
+    fn handle_outgoing(&self) {
         loop {
-            let files = match read_dir("/tmp/logdna/") {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("error reading /tmp/logdna/: {}", e);
-                    continue;
-                }
-            };
-
-            files
-                .filter_map(|f| f.ok())
-                .map(|f| f.path())
-                .filter(|p| p.is_file())
-                .filter_map(|p|
-                    File::open(&p)
-                        .ok()
-                        .and_then(|f|
-                            serde_json::from_reader::<_, Wrapper>(f)
-                                .ok()
-                                .map(|w| (p, w))
-                        )
-                )
-                .filter(|(_, w)| Utc::now().timestamp() - w.timestamp > 15)
-                .for_each(|(p, w)| {
-                    if self.line_sender
-                        .send(Either::Right(w.body))
-                        .ok()
-                        .and_then(|_|
-                            remove_file(&p)
-                                .ok()
-                        )
-                        .is_none()
-                    {
-                        error!("failed deleting retry file {:?}!", p)
-                    }
-                });
-
+            if let Err(e) = self.poll_outgoing() {
+                error!("failed to read retry: {}", e)
+            }
             sleep(Duration::from_secs(15));
         }
+    }
+
+    fn poll_outgoing(&self) -> Result<(), Error> {
+        let files = read_dir("/tmp/logdna/")?;
+
+        for file in files {
+            let path = file?.path();
+            if path.is_dir() {
+                continue;
+            }
+
+            let file_name = path.file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string())
+                .ok_or(Error::NonUTF8(path.clone()))?;
+            let timestamp: i64 = file_name
+                .split("_")
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>()
+                .get(0)
+                .and_then(|s| FromStr::from_str(s).ok())
+                .ok_or(Error::InvalidFileName(file_name.clone()))?;
+
+            if Utc::now().timestamp() - timestamp < 15 {
+                continue;
+            }
+
+            let file = File::open(&path)?;
+            let body = serde_json::from_reader(file)?;
+            self.line_sender.send(Either::Right(body))?;
+            remove_file(&path)?;
+        }
+
+        Ok(())
     }
 }
