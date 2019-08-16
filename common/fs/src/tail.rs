@@ -1,13 +1,13 @@
-use std::fs::File;
+use std::fs::{File, metadata};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
 
 use chashmap::CHashMap as HashMap;
-use crossbeam::{Receiver, scope, Sender, bounded};
-
-use http::types::body::LineBuilder;
-use http::types::body::IngestBody;
+use crossbeam::{bounded, Receiver, scope, Sender};
 use either::Either;
+
+use http::types::body::IngestBody;
+use http::types::body::LineBuilder;
 
 use crate::Event;
 
@@ -85,13 +85,24 @@ impl Tailer {
                 return;
             }
         };
+        // get the file len
+        let len = match metadata(&path).map(|m| m.len()) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("unable to stat {:?}: {:?}", path, e);
+                return;
+            }
+        };
+        // if we are at the end of the file there's no work to do
+        if *offset == len {
+            return;
+        }
         // get the name of the file set to "" if the file is invalid utf8
         let file_name = path.to_str().unwrap_or("").to_string();
-        // open the file, create a reader and grab the file length
+        // open the file, create a reader
         //todo when match postfix lands on stable replace prefix match for readability
-        let (mut reader, len) = match File::open(&path)
-            .and_then(|f| f.metadata().map(|m| (f, m)))
-            .map(|(f, m)| (BufReader::new(f), m.len())) {
+        let mut reader = match File::open(&path)
+            .map(|f| BufReader::new(f)) {
             Ok(v) => v,
             Err(e) => {
                 error!("unable to access {:?}: {:?}", path, e);
@@ -103,10 +114,6 @@ impl Tailer {
         if *offset > len {
             info!("{:?} was truncated from {} to {}", path, *offset, len);
             *offset = len;
-            return;
-        }
-        // if we are at the end of the file there's no work to do
-        if *offset == len {
             return;
         }
         // seek to the offset, this creates the "tailing" effect

@@ -124,6 +124,8 @@ impl Watcher {
     }
     // adds path to inotify and watch descriptor map
     fn add(&mut self, path: &PathBuf) -> Result<(), WatchError> {
+        // make sure that the path passed in is not a symlink
+        let path = follow_link(path.clone());
         // add the path to the inotify with the appropriate mask
         let watch_descriptor = self.inotify.add_watch(path.clone(), watch_mask(&path))?;
         // add the watch descriptor to the map so we can resolve the path later
@@ -234,7 +236,7 @@ fn follow_link(path: PathBuf) -> PathBuf {
             Ok(path) => {
                 new_path = path;
                 continue;
-            },
+            }
             Err(_) => { break; }
         }
     }
