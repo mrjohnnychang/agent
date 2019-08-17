@@ -91,7 +91,7 @@ impl Watcher {
     /// This scan has an unlimited depth, so watching /var/log/ will capture all the root and all children
     pub fn watch<P: Into<PathBuf>>(&mut self, path: P) -> Result<Vec<PathBuf>, WatchError> {
         let mut paths = Vec::new();
-        let path = path.into();
+        let path = follow_link(path.into());
         // paths needs to be valid utf8
         let path_str = path.to_str().ok_or_else(|| WatchError::PathNonUtf8(path.clone()))?;
         // if the path is a dir we need to scan it recursively
