@@ -126,11 +126,18 @@ impl Watcher {
     fn add(&mut self, path: &PathBuf) -> Result<(), WatchError> {
         // make sure that the path passed in is not a symlink
         let path = follow_link(path.clone());
+
+        // runtime check to make sure that we are following symlinks correctly
+        // no symlink should ever get passed to this function
+        // read_link errs when the file doesn't exist or is not a symlink
+        // we check the file exists and that an error is returned meaning its not a symlink
+        assert!(path.exists() && path.read_link().is_err());
+
         // add the path to the inotify with the appropriate mask
-        let watch_descriptor = self.inotify.add_watch(path.clone(), watch_mask(&path))?;
+        let watch_descriptor = self.inotify.add_watch(&path, watch_mask(&path))?;
         // add the watch descriptor to the map so we can resolve the path later
-        self.watch_descriptors.insert(watch_descriptor, path.clone());
         info!("added {:?} to watcher", path);
+        self.watch_descriptors.insert(watch_descriptor, path);
         Ok(())
     }
     // a helper for checking if a path passes exclusion/inclusion rules
@@ -199,7 +206,7 @@ fn recursive_scan(path: &PathBuf) -> Vec<PathBuf> {
     let path = follow_link(path.clone());
     let mut paths = vec![path.clone()];
 
-// read all files/dirs in path at depth 1
+    // read all files/dirs in path at depth 1
     let tmp_paths = match read_dir(&path) {
         Ok(v) => v,
         Err(e) => {
@@ -207,7 +214,7 @@ fn recursive_scan(path: &PathBuf) -> Vec<PathBuf> {
             return paths;
         }
     };
-// iterate over all the paths and call recursive_scan on all dirs
+    // iterate over all the paths and call recursive_scan on all dirs
     for tmp_path in tmp_paths {
         let path = match tmp_path {
             Ok(v) => follow_link(v.path()),
@@ -230,7 +237,7 @@ fn recursive_scan(path: &PathBuf) -> Vec<PathBuf> {
 
 // follow a symlink to its "real" path
 fn follow_link(path: PathBuf) -> PathBuf {
-    let mut new_path = path.clone();
+    let mut new_path = path;
     loop {
         match read_link(&new_path) {
             Ok(path) => {
