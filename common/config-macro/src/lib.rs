@@ -3,7 +3,7 @@
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use proc_macro2::{Ident, TokenStream as TokenStream2, Span};
 use syn::{ItemStruct, Lit, Meta, NestedMeta};

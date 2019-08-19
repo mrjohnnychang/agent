@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use hashbrown::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fs::{read_dir, read_link};
 use std::io;
