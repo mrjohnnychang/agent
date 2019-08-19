@@ -91,7 +91,7 @@ impl Watcher {
     /// This scan has an unlimited depth, so watching /var/log/ will capture all the root and all children
     pub fn watch<P: Into<PathBuf>>(&mut self, path: P) -> Result<Vec<PathBuf>, WatchError> {
         let mut paths = Vec::new();
-        let path = follow_link(path.into());
+        let path = follow_link(path.into())?;
         // paths needs to be valid utf8
         let path_str = path.to_str().ok_or_else(|| WatchError::PathNonUtf8(path.clone()))?;
         // if the path is a dir we need to scan it recursively
@@ -125,7 +125,7 @@ impl Watcher {
     // adds path to inotify and watch descriptor map
     fn add(&mut self, path: &PathBuf) -> Result<(), WatchError> {
         // make sure that the path passed in is not a symlink
-        let path = follow_link(path.clone());
+        let path = follow_link(path.clone())?;
 
         // runtime check to make sure that we are following symlinks correctly
         // no symlink should ever get passed to this function
@@ -203,7 +203,13 @@ fn watch_mask(path: &PathBuf) -> WatchMask {
 
 // recursively scans a directory for unlimited depth
 fn recursive_scan(path: &PathBuf) -> Vec<PathBuf> {
-    let path = follow_link(path.clone());
+    let path = match follow_link(path.clone()) {
+        Ok(v) => v,
+        Err(_) => {
+            return Vec::new();
+        }
+    };
+
     let mut paths = vec![path.clone()];
 
     // read all files/dirs in path at depth 1
@@ -216,8 +222,8 @@ fn recursive_scan(path: &PathBuf) -> Vec<PathBuf> {
     };
     // iterate over all the paths and call recursive_scan on all dirs
     for tmp_path in tmp_paths {
-        let path = match tmp_path {
-            Ok(v) => follow_link(v.path()),
+        let path = match tmp_path.and_then(|p| follow_link(p.path())) {
+            Ok(v) => v,
             Err(e) => {
                 error!("failed reading {:?}: {:?}", path, e);
                 continue;
@@ -236,7 +242,7 @@ fn recursive_scan(path: &PathBuf) -> Vec<PathBuf> {
 }
 
 // follow a symlink to its "real" path
-fn follow_link(path: PathBuf) -> PathBuf {
+fn follow_link(path: PathBuf) -> Result<PathBuf, io::Error> {
     let mut new_path = path;
     loop {
         match read_link(&new_path) {
@@ -244,10 +250,15 @@ fn follow_link(path: PathBuf) -> PathBuf {
                 new_path = path;
                 continue;
             }
-            Err(_) => { break; }
+            Err(e) => {
+                if !new_path.exists() {
+                    return Err(e);
+                }
+                break;
+            }
         }
     }
-    new_path
+    Ok(new_path)
 }
 
 /// Creates an instance of a Watcher
