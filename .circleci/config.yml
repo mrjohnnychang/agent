@@ -112,15 +112,12 @@ workflows:
       - ibm-registry:
           requires:
             - docker-approved
-  monthly-build:
-    triggers:
-      - schedule:
-          cron: "0 0 9 * *"
+ build-master:
+    jobs:
+      - image-build:
           filters:
             branches:
               only: master
-    jobs:
-      - image-build
       - docker-sandbox:
           requires:
             - image-build
@@ -128,9 +125,6 @@ workflows:
           type: approval
           requires:
             - docker-sandbox
-      - docker-upload:
-          requires:
-            - docker-approved
       - ibm-registry:
           requires:
-            - docker-upload
+            - docker-approved
