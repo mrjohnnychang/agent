@@ -2,11 +2,9 @@ use std::fs::{File, metadata};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
 
-use hashbrown::HashMap;
 use crossbeam::{bounded, Receiver, Sender};
-use either::Either;
+use hashbrown::HashMap;
 
-use http::types::body::IngestBody;
 use http::types::body::LineBuilder;
 
 use crate::Event;
@@ -36,7 +34,7 @@ impl Tailer {
         self.event_sender.clone()
     }
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
-    pub fn run(mut self, sender: Sender<Either<LineBuilder, IngestBody>>) {
+    pub fn run(mut self, sender: Sender<LineBuilder>) {
         loop {
             // safe to unwrap
             let event = self.event_receiver.recv().unwrap();
@@ -67,7 +65,7 @@ impl Tailer {
     }
 
     // tail a file for new line(s)
-    fn tail(&mut self, path: PathBuf, sender: &Sender<Either<LineBuilder, IngestBody>>) {
+    fn tail(&mut self, path: PathBuf, sender: &Sender<LineBuilder>) {
         // get the offset from the map, return if not found
         let offset = match self.offsets.get_mut(&path) {
             Some(v) => v,
@@ -141,11 +139,9 @@ impl Tailer {
             *offset += line_len;
             // send the line upstream, safe to unwrap
             sender.send(
-                Either::Left(
-                    LineBuilder::new()
-                        .line(line)
-                        .file(file_name.clone())
-                )
+                LineBuilder::new()
+                    .line(line)
+                    .file(file_name.clone())
             ).unwrap()
         }
     }
