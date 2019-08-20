@@ -122,12 +122,6 @@ workflows:
   check:
     jobs:
       - check
-  build-master:
-    jobs:
-      - build-master:
-          filters:
-            branches:
-              only: master
   build-tags:
     jobs:
       - image-build:
@@ -149,7 +143,7 @@ workflows:
   monthly-build:
     triggers:
       - schedule:
-          cron: "0 0 0 * *"
+          cron: "0 0 9 * *"
           filters:
             branches:
               only: master
