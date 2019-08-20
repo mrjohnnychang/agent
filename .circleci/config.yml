@@ -1,5 +1,10 @@
 version: 2.1
-
+executors:
+  docker-publisher:
+    environment:
+      IMAGE_NAME: logdna/logdna-agent-v2
+    docker:
+      - image: circleci/buildpack-deps:stretch
 jobs:
   check:
     docker:
@@ -10,34 +15,107 @@ jobs:
           name: Check
           command: |
             cargo check
-  build-tag:
-    environment:
-      IMAGE_NAME: logdna/logdna-agent-v2
-    docker:
-      - image: circleci/buildpack-deps:stretch
+  image-build:
+    executor: docker-publisher
     steps:
       - checkout
+      - run: |
+          echo "export DATESTAMP=$(date +%Y%m%d)" > env-vars
+          echo "export MAJOR_VERSION=1" >> env-vars
+          cat env-vars >> ${BASH_ENV}
       - setup_remote_docker
       - run:
           name: Build Docker image
           command: |
-            echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
-            docker build -t $IMAGE_NAME:$CIRCLE_TAG .
-            docker push $IMAGE_NAME:$CIRCLE_TAG
-  build-master:
-    environment:
-      IMAGE_NAME: logdna/logdna-agent-v2
-    docker:
-      - image: circleci/buildpack-deps:stretch
+            echo "${DATESTAMP}"
+            docker build -t ${IMAGE_NAME}:sandbox-${DATESTAMP} .
+      - run:
+          name: Archive Docker image
+          command: docker save -o image.tar ${IMAGE_NAME}:sandbox-${DATESTAMP}
+      - persist_to_workspace:
+          root: .
+          paths:
+            - ./image.tar
+            - ./env-vars
+  docker-sandbox:
+    executor: docker-publisher
     steps:
-      - checkout
+      - attach_workspace:
+          at: /tmp/workspace
+      - run: cat /tmp/workspace/env-vars >> $BASH_ENV
       - setup_remote_docker
       - run:
-          name: Build Docker image
+          name: Load archived Docker image
+          command: docker load -i /tmp/workspace/image.tar
+      - run:
+          name: Publish Docker Image to Docker Hub as Sandbox
           command: |
-            echo "${DOCKER_PASS}" | docker login --username "${DOCKER_USER}" --password-stdin
-            docker build -t $IMAGE_NAME:master .
-            docker push $IMAGE_NAME:master
+            echo "${DATESTAMP}"
+            echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+            docker push ${IMAGE_NAME}:sandbox-${DATESTAMP}
+            docker run -e IMAGE_TO_SCAN=${IMAGE_NAME}:sandbox-${DATESTAMP} -e SYSDIG_SECURE_TOKEN=$SYSDIG_SECURE_TOKEN logdna/sysdigsecure
+  docker-approved:
+    executor: docker-publisher
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - run: cat /tmp/workspace/env-vars >> $BASH_ENV
+  docker-upload:
+    executor: docker-publisher
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - run: cat /tmp/workspace/env-vars >> $BASH_ENV
+      - setup_remote_docker
+      - run:
+          name: Load archived Docker image
+          command: docker load -i /tmp/workspace/image.tar
+      - run:
+          name: Publish Docker Image to Docker Hub
+          command: |
+            echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+            TAG=${CIRCLE_TAG}
+            D_TAG="$(wget -q https://registry.hub.docker.com/v1/repositories/logdna/logdna-agent/tags -O - | jq -r '.[] | .name' | awk '!/-/ && /\./ { print $1}' | grep ${MAJOR_VERSION} | tail -1)"
+            if [ $(echo $TAG | wc -m) -lt 3 ]; then
+              IMAGE_TAG=${D_TAG}
+            else
+              IMAGE_TAG=${TAG}
+            fi
+            echo "${IMAGE_TAG}"
+            docker tag ${IMAGE_NAME}:sandbox-${DATESTAMP} ${IMAGE_NAME}:latest
+            docker tag ${IMAGE_NAME}:latest ${IMAGE_NAME}:${IMAGE_TAG}
+            docker tag ${IMAGE_NAME}:latest ${IMAGE_NAME}:${IMAGE_TAG}-${DATESTAMP}
+            docker push ${IMAGE_NAME}:${IMAGE_TAG}
+            docker push ${IMAGE_NAME}:${IMAGE_TAG}-${DATESTAMP}
+            docker push ${IMAGE_NAME}:latest
+  ibm-registry:
+    executor: docker-publisher
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - run: cat /tmp/workspace/env-vars >> $BASH_ENV
+      - setup_remote_docker
+      - run:
+          name: Load archived Docker image
+          command: docker load -i /tmp/workspace/image.tar
+      - run:
+          name: Publish Docker Image to IBM registry
+          command: |
+            TAG=${CIRCLE_TAG}
+            D_TAG="$(wget -q https://registry.hub.docker.com/v1/repositories/logdna/logdna-agent/tags -O - | jq -r '.[] | .name' | awk '!/-/ && /\./ { print $1}' | grep ${MAJOR_VERSION} | tail -1)"
+            if [ $(echo $TAG | wc -m) -lt 3 ]; then
+              IMAGE_TAG=${D_TAG}
+            else
+              IMAGE_TAG=${TAG}
+            fi
+            echo "${IMAGE_TAG}"
+            echo "${IBM_API_KEY}" | docker login -u iamapikey --password-stdin icr.io
+            docker tag ${IMAGE_NAME}:sandbox-${DATESTAMP} icr.io/ext/logdna-agent-v2:${IMAGE_TAG}
+            docker tag ${IMAGE_NAME}:sandbox-${DATESTAMP} icr.io/ext/logdna-agent-v2:latest
+            docker tag ${IMAGE_NAME}:sandbox-${DATESTAMP} icr.io/ext/logdna-agent-v2:${IMAGE_TAG}-${DATESTAMP}
+            docker push icr.io/ext/logdna-agent-v2:${IMAGE_TAG}
+            docker push icr.io/ext/logdna-agent-v2:latest
+            docker push icr.io/ext/logdna-agent-v2:${IMAGE_TAG}-${DATESTAMP}
 
 workflows:
   version: 2
@@ -50,11 +128,43 @@ workflows:
           filters:
             branches:
               only: master
-  build-tag:
+  build-tags:
     jobs:
-      - build-tag:
+      - image-build:
           filters:
             tags:
-              only: /[0-9]+\.[0-9]+\.[0-9]+/
+              only: /[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?/
             branches:
               ignore: /.*/
+      - docker-sandbox:
+          requires:
+            - image-build
+      - docker-approved:
+          type: approval
+          requires:
+            - docker-sandbox
+      - ibm-registry:
+          requires:
+            - docker-approved
+  monthly-build:
+    triggers:
+      - schedule:
+          cron: "0 0 0 * *"
+          filters:
+            branches:
+              only: master
+    jobs:
+      - image-build
+      - docker-sandbox:
+          requires:
+            - image-build
+      - docker-approved:
+          type: approval
+          requires:
+            - docker-sandbox
+      - docker-upload:
+          requires:
+            - docker-approved
+      - ibm-registry:
+          requires:
+            - docker-upload
