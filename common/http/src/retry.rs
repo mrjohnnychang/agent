@@ -1,4 +1,5 @@
 use std::fs::{create_dir_all, File, OpenOptions, read_dir, remove_file};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
@@ -8,9 +9,7 @@ use crossbeam::{bounded, Receiver, scope, Sender};
 use either::Either;
 use uuid::Uuid;
 
-use std::str::FromStr;
-
-use crate::types::body::{IngestBody, LineBuilder};
+use crate::types::body::IngestBody;
 
 quick_error! {
     #[derive(Debug)]
@@ -24,7 +23,7 @@ quick_error! {
         Recv(e: crossbeam::RecvError){
             from()
         }
-        Send(e: crossbeam::SendError<Either<LineBuilder, IngestBody>>){
+        Send(e: crossbeam::SendError<IngestBody>){
             from()
         }
         NonUTF8(path: std::path::PathBuf){
@@ -39,17 +38,17 @@ quick_error! {
 pub struct Retry {
     retry_sender: Sender<Arc<IngestBody>>,
     retry_receiver: Receiver<Arc<IngestBody>>,
-    line_sender: Sender<Either<LineBuilder, IngestBody>>,
+    body_sender: Sender<IngestBody>,
 }
 
 impl Retry {
     pub fn new() -> Retry {
         let (s, r) = bounded(256);
-        let (temp, _) = bounded(256);
+        let (temp, _) = bounded(0);
         Retry {
             retry_sender: s,
             retry_receiver: r,
-            line_sender: temp,
+            body_sender: temp,
         }
     }
 
@@ -57,8 +56,8 @@ impl Retry {
         self.retry_sender.clone()
     }
 
-    pub fn run(mut self, line_sender: Sender<Either<LineBuilder, IngestBody>>) {
-        self.line_sender = line_sender;
+    pub fn run(mut self, body_sender: Sender<IngestBody>) {
+        self.body_sender = body_sender;
 
         create_dir_all("/tmp/logdna/").expect("can't create /tmp/logdna");
         scope(|s| {
@@ -131,7 +130,7 @@ impl Retry {
 
             let file = File::open(&path)?;
             let body = serde_json::from_reader(file)?;
-            self.line_sender.send(Either::Right(body))?;
+            self.body_sender.send(body)?;
             remove_file(&path)?;
         }
 

@@ -19,6 +19,5 @@ lazy_static = "1"
 crossbeam = "0.7"
 hashbrown = "0.6"
 num_cpus = "1"
-either = "1"
 #logging
 log = "0.4"

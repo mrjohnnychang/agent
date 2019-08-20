@@ -17,9 +17,11 @@ use crate::types::response::Response;
 pub struct Client {
     inner: HttpClient,
     runtime: Runtime,
-    line_sender: Sender<Either<LineBuilder, IngestBody>>,
-    line_receiver: Receiver<Either<LineBuilder, IngestBody>>,
-    retry_sender: Sender<Arc<IngestBody>>,
+    line_sender: Sender<LineBuilder>,
+    line_receiver: Receiver<LineBuilder>,
+    retry_in_sender: Sender<IngestBody>,
+    retry_in_receiver: Receiver<IngestBody>,
+    retry_out_sender: Sender<Arc<IngestBody>>,
 
     buffer: Vec<Line>,
     buffer_max_size: usize,
@@ -33,13 +35,16 @@ impl Client {
     pub fn new(template: RequestTemplate) -> Self {
         let mut runtime = Runtime::new().expect("Runtime::new()");
         let (s, r) = bounded(256);
-        let (temp, _) = bounded(256);
+        let (temp, _) = bounded(0);
+        let (retry_in_sender, retry_in_receiver) = bounded(256);
         Self {
             inner: HttpClient::new(template, &mut runtime),
             runtime,
             line_sender: s,
             line_receiver: r,
-            retry_sender: temp,
+            retry_in_sender,
+            retry_in_receiver,
+            retry_out_sender: temp,
 
             buffer: Vec::new(),
             buffer_max_size: 2 * 1024 * 1024,
@@ -47,18 +52,24 @@ impl Client {
             buffer_timeout: new_timeout(),
         }
     }
-    /// Returns the channel sender used to send data from other threads
-    pub fn sender(&self) -> Sender<Either<LineBuilder, IngestBody>> {
+    /// Returns the channel senders used to send data from other threads
+    pub fn sender(&self) -> (Sender<LineBuilder>, Sender<IngestBody>) {
+        (self.line_sender.clone(), self.retry_in_sender.clone())
+    }
+
+    pub fn retry_sender(&self) -> Sender<LineBuilder> {
         self.line_sender.clone()
     }
+
     /// The main logic loop, consumes self because it should only be called once
     pub fn run(mut self, retry_sender: Sender<Arc<IngestBody>>) {
-        self.retry_sender = retry_sender;
+        self.retry_out_sender = retry_sender;
 
         loop {
             if self.buffer_bytes < self.buffer_max_size {
                 let msg = select! {
-                    recv(self.line_receiver) -> msg => msg,
+                    recv(self.line_receiver) -> msg => msg.map(|m| Either::Left(m)),
+                    recv(self.retry_in_receiver) -> msg => msg.map(|m| Either::Right(m)),
                     recv(self.buffer_timeout) -> _ => {
                         self.flush();
                         continue;
@@ -107,7 +118,7 @@ impl Client {
     }
 
     fn send(&mut self, body: IngestBody) {
-        let sender = self.retry_sender.clone();
+        let sender = self.retry_out_sender.clone();
         let fut = self.inner.send(body)
             .then(move |r| {
                 match r {

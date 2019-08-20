@@ -41,15 +41,14 @@ fn main() {
     let mut client = Client::new(config.http.template);
     client.set_max_buffer_size(config.http.body_size);
     client.set_timeout(config.http.timeout);
-    let client_sender = client.sender();
+    let (client_sender, client_retry_sender) = client.sender();
 
     let retry = Retry::new();
     let retry_sender = retry.sender();
 
     let tmp = client_sender.clone();
     spawn(move || tailer.run(tmp));
-    let tmp = client_sender.clone();
-    spawn(move || retry.run(tmp));
+    spawn(move || retry.run(client_retry_sender));
     spawn(move || watcher.run(tailer_sender));
     client.run(retry_sender);
 }
