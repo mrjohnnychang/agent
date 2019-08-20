@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use chrono::prelude::Utc;
 use crossbeam::{bounded, Receiver, scope, Sender};
-use either::Either;
 use uuid::Uuid;
 
 use crate::types::body::IngestBody;
