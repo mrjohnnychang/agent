@@ -112,7 +112,7 @@ workflows:
       - ibm-registry:
           requires:
             - docker-approved
- build-master:
+  build-master:
     jobs:
       - image-build:
           filters:
