@@ -1,8 +1,9 @@
+use std::sync::Arc;
+
 use crossbeam::{bounded, Receiver, Sender};
+use crossbeam::scope;
 
 use http::types::body::LineBuilder;
-use crossbeam::scope;
-use std::sync::Arc;
 
 pub enum Status {
     Ok(LineBuilder),
@@ -10,7 +11,7 @@ pub enum Status {
 }
 
 pub trait Middleware: Send + Sync + 'static {
-    fn init(&self);
+    fn run(&self);
     fn process(&self, line: LineBuilder) -> Status;
 }
 
@@ -37,6 +38,10 @@ impl Executor {
         self.middlewares.push(Arc::new(middleware))
     }
 
+    pub fn add_sender(&mut self, sender: Sender<LineBuilder>) {
+        self.senders.push(sender)
+    }
+
     pub fn sender(&self) -> Sender<LineBuilder> {
         self.line_sender.clone()
     }
@@ -47,7 +52,7 @@ impl Executor {
             s.spawn(|s| {
                 for middleware in &self.middlewares {
                     let middleware = middleware.clone();
-                    s.spawn(move |_| middleware.init());
+                    s.spawn(move |_| middleware.run());
                 }
             });
         }).expect("Executor::run()");

@@ -2,6 +2,7 @@
 extern crate log;
 
 use std::convert::TryFrom;
+use std::path::PathBuf;
 use std::thread::spawn;
 
 use config::{env::Config as EnvConfig, raw::Config as RawConfig};
@@ -10,6 +11,8 @@ use fs::tail::Tailer;
 use fs::watch::Watcher;
 use http::client::Client;
 use http::retry::Retry;
+use k8s::K8s;
+use middleware::Executor;
 
 fn main() {
     env_logger::init();
@@ -43,11 +46,18 @@ fn main() {
     client.set_timeout(config.http.timeout);
     let (client_sender, client_retry_sender) = client.sender();
 
+    let mut executor = Executor::new();
+    let executor_sender = executor.sender();
+    executor.add_sender(client_sender.clone());
+    if PathBuf::from("/var/log/containers/").exists() {
+        executor.register(K8s::new());
+    }
+
     let retry = Retry::new();
     let retry_sender = retry.sender();
 
-    let tmp = client_sender.clone();
-    spawn(move || tailer.run(tmp));
+    spawn(move || tailer.run(executor_sender));
+    spawn(move || executor.run());
     spawn(move || retry.run(client_retry_sender));
     spawn(move || watcher.run(tailer_sender));
     client.run(retry_sender);

@@ -5,6 +5,7 @@ members = [
     "common/config-macro",
     "common/fs",
     "common/http",
+    "common/k8s",
     "common/middleware",
 ]
 
