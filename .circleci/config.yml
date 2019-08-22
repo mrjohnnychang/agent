@@ -15,12 +15,24 @@ jobs:
           name: Check
           command: |
             cargo check
+  set-master:
+    executor: docker-publisher
+    steps:
+      - run: |
+          echo "export IMAGE_TAG=master" > env-vars1
+          cat env-vars1 >> ${BASH_ENV}
+      - persist_to_workspace:
+          root: .
+          paths:
+            - ./image.tar
+            - ./env-vars1
+
   image-build:
     executor: docker-publisher
     steps:
       - checkout
       - run: |
-          echo "export DATESTAMP=$(date +%Y%m%d)" > env-vars
+          echo "export DATESTAMP=$(date +%s)" > env-vars
           cat env-vars >> ${BASH_ENV}
       - setup_remote_docker
       - run:
@@ -41,6 +53,7 @@ jobs:
       - attach_workspace:
           at: /tmp/workspace
       - run: cat /tmp/workspace/env-vars >> $BASH_ENV
+      - run: cat /tmp/workspace/env-vars1 >> $BASH_ENV
       - setup_remote_docker
       - run:
           name: Load archived Docker image
@@ -51,18 +64,21 @@ jobs:
             echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
             docker push ${IMAGE_NAME}:sandbox-${DATESTAMP}
             docker run -e IMAGE_TO_SCAN=${IMAGE_NAME}:sandbox-${DATESTAMP} -e SYSDIG_SECURE_TOKEN=$SYSDIG_SECURE_TOKEN logdna/sysdigsecure
+
   docker-approved:
     executor: docker-publisher
     steps:
       - attach_workspace:
           at: /tmp/workspace
       - run: cat /tmp/workspace/env-vars >> $BASH_ENV
+      - run: cat /tmp/workspace/env-vars1 >> $BASH_ENV
   docker-upload:
     executor: docker-publisher
     steps:
       - attach_workspace:
           at: /tmp/workspace
       - run: cat /tmp/workspace/env-vars >> $BASH_ENV
+      - run: cat /tmp/workspace/env-vars1 >> $BASH_ENV
       - setup_remote_docker
       - run:
           name: Load archived Docker image
@@ -71,6 +87,11 @@ jobs:
           name: Publish Docker Image to Docker Hub
           command: |
             echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+
+            if [ -n "$CIRCLE_TAG" ]; then
+             IMAGE_TAG=${CIRCLE_TAG}
+            fi
+
             docker tag ${IMAGE_NAME}:sandbox-${DATESTAMP} ${IMAGE_NAME}:${IMAGE_TAG}
             docker push ${IMAGE_NAME}:${IMAGE_TAG}
   ibm-registry:
@@ -79,6 +100,7 @@ jobs:
       - attach_workspace:
           at: /tmp/workspace
       - run: cat /tmp/workspace/env-vars >> $BASH_ENV
+      - run: cat /tmp/workspace/env-vars1 >> $BASH_ENV
       - setup_remote_docker
       - run:
           name: Load archived Docker image
@@ -112,19 +134,24 @@ workflows:
       - ibm-registry:
           requires:
             - docker-approved
+      - docker-upload:
+          requires:
+            - docker-approved
   build-master:
     jobs:
+      - set-master
       - image-build:
           filters:
             branches:
               only: master
+          requires:
+            - set-master
       - docker-sandbox:
           requires:
             - image-build
-      - docker-approved:
-          type: approval
-          requires:
-            - docker-sandbox
       - ibm-registry:
           requires:
-            - docker-approved
+            - docker-sandbox
+      - docker-upload:
+          requires:
+            - docker-sandbox
