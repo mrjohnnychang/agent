@@ -13,6 +13,7 @@ use http::types::request::{Encoding, RequestTemplate, Schema};
 use crate::env::Config as EnvConfig;
 use crate::error::ConfigError;
 use crate::raw::{Config as RawConfig, Rules as RawRules};
+use std::io::Read;
 
 pub mod env;
 pub mod error;
@@ -264,10 +265,33 @@ impl TryFrom<RawConfig> for Config {
 }
 
 pub fn get_hostname() -> Option<String> {
+    let path = PathBuf::from("/etc/logdna-hostname");
+    if path.exists() {
+        if let Ok(s) = File::open(&path)
+            .and_then(|mut f| {
+                let mut s = String::new();
+                f.read_to_string(&mut s).map(|_| s)
+            }) {
+            return Some(s)
+        }
+    }
+
+    let path = PathBuf::from("/etc/hostname");
+    if path.exists() {
+        if let Ok(s) = File::open(&path)
+            .and_then(|mut f| {
+                let mut s = String::new();
+                f.read_to_string(&mut s).map(|_| s)
+            }) {
+            return Some(s)
+        }
+    }
+
     let name = CString::new(Vec::with_capacity(512)).ok()?.into_raw();
     if unsafe { libc::gethostname(name, 512) } == 0 {
         return unsafe { CString::from_raw(name) }.into_string().ok();
     }
+
     None
 }
 
